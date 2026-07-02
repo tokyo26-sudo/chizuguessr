@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.12 - ラベル無し地図クイズ／外部データ分離版</title>
+<title>地図ゲッサー v0.15 - ラベル無し地図クイズ／陸地マスク対応版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -386,7 +386,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.12</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.15</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="timerStat"><span class="val" id="timerVal">--</span><span class="lbl">残り秒</span></div>
@@ -432,7 +432,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.12</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.15</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div class="fieldRow">
         <label>出題エリア</label>
@@ -509,12 +509,14 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <!-- 都市モード用データダカラ。主要分ハ最初カラ読込ンデ、むずかしい用ノ追加分ハ必要ナ時ダケ後カラ読込ムヨ -->
 <script src="cities_data.js"></script>
+<!-- 海岸線判定用ダカラ。RLE圧縮した陸地マスクデータダヨ -->
+<script src="landmask_data.js"></script>
 <script>
 (function(){
   "use strict";
 
   // ---------- config ----------
-  const VERSION = '0.12';
+  const VERSION = '0.15';
 
   // ランキング機能ダカラ。使ウナラ、下ノFIREBASE_CONFIGヲ自分ノFirebaseプロジェクトノ値ニ書キ換エルダケデOKダヨ。
   // 書キ換エナカッタラ、ランキング関連ノボタン、自動デ隠レルカラ、ゲーム自体ハ普通ニ遊ベルヨ。
@@ -609,6 +611,9 @@
     return Math.max(0, Math.min(5000, s));
   }
 
+  // 海関連ダト判定スル単語リストダヨ（Nominatimが返す種類・住所キーをココでチェックするヨ）
+  const WATER_TYPES = ['water','bay','strait','sea','ocean','reef','channel','fjord','lagoon','sound','gulf'];
+
   async function reverseGeocode(lat, lon){
     try{
       const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=10&accept-language=ja`;
@@ -616,6 +621,14 @@
       if(!res.ok) return null;
       const data = await res.json();
       if(data && !data.error && data.address){
+        // Nominatimハ海の上デモ「近くの陸地の住所」返しちゃうコトあるカラ、
+        // 種類が海関連（type/categoryが water・bay・sea等）ダッタラ、陸地ジャナイと判定するヨ
+        const typ = (data.type || '').toLowerCase();
+        const cat = (data.category || '').toLowerCase();
+        if(cat === 'natural' && WATER_TYPES.includes(typ)) return false;
+        // 住所の中に「sea」「bay」「ocean」等のキーが直接入ってるコトもあるカラ、ソレもチェックするヨ
+        const addrKeys = Object.keys(data.address).map(k => k.toLowerCase());
+        if(addrKeys.some(k => WATER_TYPES.includes(k))) return false;
         return {
           name: data.display_name || (data.address.country || '不明な場所'),
           countryCode: (data.address.country_code || '').toLowerCase()
@@ -637,6 +650,26 @@
     return {degLat, degLon};
   }
 
+  // 陸地マスク（RLE圧縮）から、コノ座標が陸地カ判定するヨ。通信不要・一瞬デ終わるダカラ
+  function isLandAt(lat, lon){
+    if(typeof LANDMASK_ROWS === 'undefined') return true; // 万一データ未読込ミナラ、判定スキップして通すヨ
+    let la = Math.max(-89.999, Math.min(90, lat));
+    let lo = ((lon + 180) % 360 + 360) % 360 - 180; // -180〜180の範囲にならすヨ
+    let col = Math.floor((lo + 180) / 360 * LANDMASK_WIDTH);
+    let row = Math.floor((90 - la) / 180 * LANDMASK_HEIGHT);
+    col = Math.max(0, Math.min(LANDMASK_WIDTH - 1, col));
+    row = Math.max(0, Math.min(LANDMASK_HEIGHT - 1, row));
+    const runs = LANDMASK_ROWS[row];
+    let cur = runs[0];
+    let pos = 0;
+    for(let i=1;i<runs.length;i++){
+      pos += runs[i];
+      if(col < pos) return cur === 1;
+      cur = cur ? 0 : 1;
+    }
+    return cur === 1;
+  }
+
   async function getRandomPoint(mode, zoom){
     for(let i=0;i<15;i++){
       let lat, lon;
@@ -647,24 +680,29 @@
         lat = -55 + Math.random()*(70-(-55));
         lon = -180 + Math.random()*360;
       }
-      const geo = await reverseGeocode(lat, lon);
-      if(geo === false){ continue; } // 海の上、引き直すヨ
-      if(geo === null){
-        // 通信エラーで確認できなかッタ -> フォールバックに回すヨ
-        break;
-      }
-      if(mode === 'japan' && geo.countryCode !== 'jp'){
-        continue; // ①日本モードなのに他国だッタラ引き直すヨ（北方領土・対馬海峡の向こう側とか対策ダカラ）
-      }
-      // ②陸地率チェック：表示範囲の隅っこもサンプリングして、まるごと海じゃないか確認するヨ
+      // ①まず陸地マスクでオフライン判定するヨ。海ならすぐ引き直すダカラ、通信要らないヨ
+      if(!isLandAt(lat, lon)) continue;
+
+      // ②陸地率チェック：表示範囲の隅っこも陸地マスクで確認して、まるごと海じゃないか見るヨ
       const {degLat, degLon} = estimateHalfExtentDeg(zoom, lat);
       const cornerLat = lat + degLat*0.65;
       const cornerLon = lon + degLon*0.65;
-      const cornerGeo = await reverseGeocode(cornerLat, cornerLon);
-      if(cornerGeo === false){
+      if(!isLandAt(cornerLat, cornerLon)){
         continue; // 隅が海 -> 表示範囲の大半が海の可能性高いカラ、引き直すヨ
       }
-      return {lat, lon, name: geo.name};
+
+      if(mode === 'japan'){
+        // 日本モードのときダケ、本当に日本かNominatimで確認するヨ（陸地なのは確定済みダカラ、コレは国境チェック専用ダヨ）
+        const geo = await reverseGeocode(lat, lon);
+        if(geo === null){
+          return {lat, lon, name: '（日本のどこか）'}; // 通信エラー -> 陸地なのは確実だからこのまま採用スルヨ
+        }
+        if(geo === false || geo.countryCode !== 'jp'){
+          continue; // 他国の陸地だったら引き直すヨ（北方領土・対馬海峡の向こう側とか対策ダカラ）
+        }
+        return {lat, lon, name: geo.name};
+      }
+      return {lat, lon, name: '（陸地）'};
     }
     const pool = mode==='japan' ? FALLBACK_JAPAN : FALLBACK_WORLD;
     const p = pool[Math.floor(Math.random()*pool.length)];
@@ -686,7 +724,7 @@
     return hardCityDataPromise;
   }
 
-  // 都市モード：通信不要でGeoNamesベースの都市リストから直接選ぶダカラ、速イヨ
+  // 都市モード：GeoNamesベースの都市リストから選ブヨ。揺らした先が海ダッタラ、陸地マスクで陸地見ツカルマデ揺らし直すダカラ
   function getRandomCityPoint(mode){
     // むずかしい設定ダト、追加データ（小サイ町モ入ッタヤツ）読込ミ済ミナラソッチ優先シテ使ウヨ
     const useHard = difficulty === 'hard' && typeof CITIES_WORLD_HARD !== 'undefined';
@@ -697,10 +735,18 @@
       pool = mode==='japan' ? CITIES_JAPAN : CITIES_WORLD;
     }
     const c = pool[Math.floor(Math.random()*pool.length)];
-    // ピンポイントで毎回同じ点にならないよう、ちょっとだけ揺らすヨ（だいたい±2km程度ダカラ）
-    const jitterLat = (Math.random()-0.5)*0.03;
-    const jitterLon = (Math.random()-0.5)*0.03;
-    return {lat:c[0]+jitterLat, lon:c[1]+jitterLon, name:c[2]};
+
+    // ちょっとだけ揺らして毎回同じ点にならないようにするヨ（だいたい±2km程度ダカラ）。
+    // 揺らした先が海だったら、揺らし幅を狭めながら何回か引き直すヨ（陸地マスクで一瞬判定ダカラ、通信要らないヨ）
+    for(let i=0;i<6;i++){
+      const shrink = 1 - i*0.15; // 引き直すたびに揺れ幅を狭くしていくダカラ
+      const jitterLat = (Math.random()-0.5)*0.03*shrink;
+      const jitterLon = (Math.random()-0.5)*0.03*shrink;
+      const lat = c[0]+jitterLat, lon = c[1]+jitterLon;
+      if(isLandAt(lat, lon)) return {lat, lon, name: c[2]};
+    }
+    // 6回とも海だったら、都市の元の座標（揺らし無し）をソノまま使うヨ。ココはほぼ確実に陸地ダカラ
+    return {lat: c[0], lon: c[1], name: c[2]};
   }
 
   // 通常モード／都市モード、どっち使うかココで振り分けるヨ
