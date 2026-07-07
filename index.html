@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.35 - ラベル無し地図クイズ／ステータス画面統合版</title>
+<title>地図ゲッサー v0.37 - ラベル無し地図クイズ／解放UI移動版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -402,7 +402,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.35</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.37</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="timerStat"><span class="val" id="timerVal">--</span><span class="lbl">残り秒</span></div>
@@ -448,7 +448,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.35</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.37</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div id="sharedQuizBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
         <p id="sharedQuizBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
@@ -468,7 +468,7 @@
       </div>
       <div id="regionPickerRow" class="fieldRow hidden">
         <label>地域（複数選べるヨ）</label>
-        <div id="regionUnlockStatus" style="font-size:12px; margin-bottom:6px; color: var(--brass-light, #c9a876);"></div>
+        <div id="regionUnlockHint" style="font-size:12px; margin-bottom:6px; color: var(--brass-light, #c9a876);"></div>
         <div id="regionCheckboxes" style="display:flex; flex-direction:column; gap:4px; font-size:13px; max-height:220px; overflow-y:auto; padding:8px; border:1px solid rgba(168,130,63,0.3); border-radius:6px;"></div>
       </div>
       <div class="fieldRow">
@@ -562,11 +562,13 @@
   </div>
 
   <div id="progressMapPanel" class="hidden">
-    <div class="card" style="max-width:640px; width:94%;">
+    <div class="card" style="max-width:640px; width:94%; max-height:90vh; overflow-y:auto;">
       <h2>📊 ステータスダヨ</h2>
       <p id="progressMapSummary" style="font-size:13px; margin:0 0 10px 0;"></p>
-      <div id="progressMapEl" style="width:100%; height:360px; border-radius:6px; overflow:hidden;"></div>
-      <p style="font-size:12px; opacity:0.75; margin:8px 0 0 0;">🟩 解放済ミ　🟥 未解放</p>
+      <div id="progressMapEl" style="width:100%; height:300px; border-radius:6px; overflow:hidden;"></div>
+      <p style="font-size:12px; opacity:0.75; margin:8px 0 12px 0;">🟩 解放済ミ　🟥 未解放</p>
+      <div id="statusRegionUnlockText" style="font-size:12px; margin-bottom:6px; color: var(--brass-light, #c9a876);"></div>
+      <div id="statusRegionList" style="display:flex; flex-direction:column; gap:4px; font-size:13px; max-height:220px; overflow-y:auto; padding:8px; border:1px solid rgba(168,130,63,0.3); border-radius:6px;"></div>
       <button class="btn brass" id="closeProgressMapBtn" style="margin-top:10px;">閉じる</button>
     </div>
   </div>
@@ -590,7 +592,7 @@
   "use strict";
 
   // ---------- config ----------
-  const VERSION = '0.35';
+  const VERSION = '0.37';
 
   // ランキング機能ダカラ。使ウナラ、下ノFIREBASE_CONFIGヲ自分ノFirebaseプロジェクトノ値ニ書キ換エルダケデOKダヨ。
   // 書キ換エナカッタラ、ランキング関連ノボタン、自動デ隠レルカラ、ゲーム自体ハ普通ニ遊ベルヨ。
@@ -1329,21 +1331,42 @@
     return Math.max(0, earned - unlockedRegions.size);
   }
 
+  // トップ画面：解放済ミノ地域ダケ、チェックボックスデ選ベルヨウニスルヨ（解放操作ハステータス画面ノ方ダヨ）
   function renderRegionPicker(){
     const container = $('regionCheckboxes');
     container.innerHTML = '';
-    const choices = availableUnlockChoices();
-    $('regionUnlockStatus').textContent = choices > 0
-      ? `🔓 解放チャンス：${choices}回分アルヨ！好きナ地域、選んでネ`
-      : `経験値：${totalXP}点／次ノ解放マデ、あと${xpNeededForNextChoice(totalXP)-totalXP}点ダヨ`;
+    const lockedCount = REGION_ORDER.length - unlockedRegions.size;
+    $('regionUnlockHint').textContent = lockedCount > 0
+      ? `🔒 未解放ノ地域、あと${lockedCount}コアルヨ。「📊 ステータス」画面デ解放デキルダカラ`
+      : '';
     REGION_ORDER.forEach(key => {
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:28px;';
+      row.style.cssText = 'display:flex; align-items:center; gap:6px; min-height:24px;';
       if(unlockedRegions.has(key)){
         row.innerHTML = `<label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin:0; min-width:0; flex:1;">
           <input type="checkbox" class="regionCheckbox" value="${key}" style="width:auto; flex-shrink:0;">
           <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${REGION_LABELS[key]}</span>
         </label>`;
+      } else {
+        row.innerHTML = `<span style="opacity:0.35; min-width:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🔒 ${REGION_LABELS[key]}</span>`;
+      }
+      container.appendChild(row);
+    });
+  }
+
+  // ステータス画面：鍵アイコン＋解放ボタンノ、ソレデ解放スル方ノリストダヨ
+  function renderStatusRegionList(){
+    const container = $('statusRegionList');
+    container.innerHTML = '';
+    const choices = availableUnlockChoices();
+    $('statusRegionUnlockText').textContent = choices > 0
+      ? `🔓 解放チャンス：${choices}回分アルヨ！好きナ地域、選んでネ`
+      : `次ノ解放マデ、あと${xpNeededForNextChoice(totalXP)-totalXP}点ダヨ`;
+    REGION_ORDER.forEach(key => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:28px;';
+      if(unlockedRegions.has(key)){
+        row.innerHTML = `<span style="min-width:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">✅ ${REGION_LABELS[key]}</span>`;
       } else if(choices > 0){
         row.innerHTML = `<span style="opacity:0.6; min-width:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🔒 ${REGION_LABELS[key]}</span>
           <button type="button" class="btn unlockRegionBtn" data-region="${key}" style="width:auto; display:inline-block; flex-shrink:0; padding:4px 12px; margin:0; font-size:11px;">解放</button>`;
@@ -1358,7 +1381,8 @@
         if(availableUnlockChoices() > 0 && !unlockedRegions.has(key)){
           unlockedRegions.add(key);
           saveProgress();
-          renderRegionPicker(); // 解放シタラ、再描画スルヨ
+          renderRegionPicker(); // トップ画面ノ選択肢モ更新シトクヨ
+          showProgressMap(); // コッチガリストモ地図モまとめて描き直すヨ
         }
       });
     });
@@ -1366,39 +1390,94 @@
 
   // ---------- 進捗マップ（解放状況ヲ世界地図デ見ルヤツ） ----------
   let progressMap = null;
+  let progressLayer = null;
+  let worldGeoJsonCache = null; // 一回取レタラ、キャッシュしとくヨ
+  let topojsonLoadPromise = null;
+
+  function ensureTopojsonLib(){
+    if(typeof topojson !== 'undefined') return Promise.resolve();
+    if(topojsonLoadPromise) return topojsonLoadPromise;
+    topojsonLoadPromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js';
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('topojson-client読込ミ失敗シタヨ'));
+      document.head.appendChild(s);
+    });
+    return topojsonLoadPromise;
+  }
+
+  async function loadWorldGeoJson(){
+    if(worldGeoJsonCache) return worldGeoJsonCache;
+    await ensureTopojsonLib();
+    const res = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+    if(!res.ok) throw new Error('世界地図データ取得失敗シタヨ');
+    const topology = await res.json();
+    worldGeoJsonCache = topojson.feature(topology, topology.objects.countries);
+    return worldGeoJsonCache;
+  }
+
+  function regionColorFor(key){
+    return unlockedRegions.has(key) ? '#4c8c4a' : '#a83a3a';
+  }
+
+  // 国境ポリゴン取レナカッタ時用ノ、大雑把な四角表示（フォールバックダヨ）
+  function drawRegionRectangles(){
+    REGION_ORDER.forEach(key => {
+      const b = REGION_BOUNDS[key];
+      if(!b) return;
+      const unlocked = unlockedRegions.has(key);
+      const color = regionColorFor(key);
+      const drawBox = (lo, hi) => {
+        const rect = L.rectangle([[b[0], lo],[b[2], hi]], {
+          color, weight:1, fillColor:color, fillOpacity: unlocked ? 0.45 : 0.25
+        }).addTo(progressMap);
+        rect._isRegionBox = true;
+        rect.bindTooltip(REGION_LABELS[key], {sticky:true});
+      };
+      if(b[1] > b[3]){
+        drawBox(b[1], 180);
+        drawBox(-180, b[3]);
+      } else {
+        drawBox(b[1], b[3]);
+      }
+    });
+  }
+
   function showProgressMap(){
     $('progressMapPanel').classList.remove('hidden');
     $('progressMapSummary').textContent = `経験値：${totalXP}点／解放済ミ：${unlockedRegions.size}/${REGION_ORDER.length}地域ダヨ`;
+    renderStatusRegionList();
     if(!progressMap){
       progressMap = L.map('progressMapEl', {zoomControl:true, worldCopyJump:false}).setView([15,10], 1);
       L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', {
         subdomains:'abcd', maxZoom: 6, attribution: ''
       }).addTo(progressMap);
     }
-    waitForMapSize(progressMap, () => {
+    waitForMapSize(progressMap, async () => {
       progressMap.invalidateSize();
-      // 既存の色塗り四角、消してから描き直すヨ
+      // 前回描イタ分、消してから描き直すヨ
+      if(progressLayer){ progressMap.removeLayer(progressLayer); progressLayer = null; }
       progressMap.eachLayer(l => { if(l._isRegionBox) progressMap.removeLayer(l); });
-      REGION_ORDER.forEach(key => {
-        const b = REGION_BOUNDS[key];
-        if(!b) return;
-        const unlocked = unlockedRegions.has(key);
-        const color = unlocked ? '#4c8c4a' : '#a83a3a';
-        const drawBox = (lo, hi) => {
-          const rect = L.rectangle([[b[0], lo],[b[2], hi]], {
-            color, weight:1, fillColor:color, fillOpacity: unlocked ? 0.45 : 0.25
-          }).addTo(progressMap);
-          rect._isRegionBox = true;
-          rect.bindTooltip(REGION_LABELS[key], {sticky:true});
-        };
-        if(b[1] > b[3]){
-          // 日付変更線マタグ地域ダカラ、二つニ分けて描くヨ
-          drawBox(b[1], 180);
-          drawBox(-180, b[3]);
-        } else {
-          drawBox(b[1], b[3]);
-        }
-      });
+      try{
+        const geo = await loadWorldGeoJson();
+        progressLayer = L.geoJSON(geo, {
+          style: (feature) => {
+            const regionKey = NUMERIC_TO_REGION[parseInt(feature.id, 10)];
+            if(!regionKey) return {fillOpacity:0, weight:0, opacity:0}; // 該当ナシ（南極トカ）ハ透明ニするヨ
+            const unlocked = unlockedRegions.has(regionKey);
+            const color = regionColorFor(regionKey);
+            return {color, weight:0.6, fillColor:color, fillOpacity: unlocked ? 0.55 : 0.3};
+          },
+          onEachFeature: (feature, layer) => {
+            const regionKey = NUMERIC_TO_REGION[parseInt(feature.id, 10)];
+            if(regionKey) layer.bindTooltip(REGION_LABELS[regionKey], {sticky:true});
+          }
+        }).addTo(progressMap);
+      }catch(e){
+        console.warn('国境ポリゴン読込ミ失敗シタヨ、四角表示ニ切替エルネ', e);
+        drawRegionRectangles();
+      }
     });
   }
 
