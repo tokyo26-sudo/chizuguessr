@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.18 - ラベル無し地図クイズ／結果一覧対応版</title>
+<title>地図ゲッサー v0.19 - ラベル無し地図クイズ／出題スタイル統合版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -393,7 +393,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.18</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.19</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="timerStat"><span class="val" id="timerVal">--</span><span class="lbl">残り秒</span></div>
@@ -439,7 +439,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.18</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.19</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div class="fieldRow">
         <label>出題エリア</label>
@@ -449,18 +449,12 @@
         </select>
       </div>
       <div class="fieldRow">
-        <label>都市モード</label>
-        <label style="display:flex; align-items:center; gap:6px; font-weight:normal;">
-          <input type="checkbox" id="cityModeCheckbox" style="width:auto;">
-          <span style="font-size:13px;">有名な都市の周辺だけ出題（速いヨ・地方も混ざるヨ）</span>
-        </label>
-      </div>
-      <div class="fieldRow">
-        <label>都市の範囲</label>
-        <label style="display:flex; align-items:center; gap:6px; font-weight:normal;">
-          <input type="checkbox" id="megaModeCheckbox" style="width:auto;">
-          <span style="font-size:13px;">世界は大都市のみ・日本は市町村まで細かく（都市モード時ダケ有効ダヨ）</span>
-        </label>
+        <label>出題スタイル</label>
+        <select id="citySelect">
+          <option value="random" selected>ランダム座標（今まで通り）</option>
+          <option value="city">都市モード（有名な町から地方の小さな町まで出るヨ）</option>
+          <option value="mega">大都市モード（世界は人口50万人以上・日本は市町村の中心地）</option>
+        </select>
       </div>
       <div class="fieldRow">
         <label>難易度</label>
@@ -541,7 +535,7 @@
   "use strict";
 
   // ---------- config ----------
-  const VERSION = '0.18';
+  const VERSION = '0.19';
 
   // ランキング機能ダカラ。使ウナラ、下ノFIREBASE_CONFIGヲ自分ノFirebaseプロジェクトノ値ニ書キ換エルダケデOKダヨ。
   // 書キ換エナカッタラ、ランキング関連ノボタン、自動デ隠レルカラ、ゲーム自体ハ普通ニ遊ベルヨ。
@@ -1212,8 +1206,9 @@
 
     $('startBtn').addEventListener('click', () => {
       mode = $('modeSelect').value;
-      cityMode = $('cityModeCheckbox').checked;
-      megaMode = $('megaModeCheckbox').checked;
+      const styleVal = $('citySelect').value;
+      cityMode = styleVal !== 'random';
+      megaMode = styleVal === 'mega';
       difficulty = $('difficultySelect').value;
       timeSetting = $('timeSelect').value;
       totalRounds = parseInt($('roundsSelect').value, 10);
@@ -1241,7 +1236,7 @@
     $('viewRankingFromStartBtn').addEventListener('click', () => {
       // スタート画面デハ、今選バレテル設定カラカテゴリ推定スルヨ
       const tempMode = $('modeSelect').value;
-      const tempCity = $('cityModeCheckbox').checked;
+      const tempCity = $('citySelect').value !== 'random';
       showRanking(`${tempMode}_${tempCity ? 'city' : 'full'}`);
     });
     $('viewRankingBtn').addEventListener('click', () => showRanking(getRankingCategory()));
