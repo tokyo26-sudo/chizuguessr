@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.25 - ラベル無し地図クイズ／大画面フレーム対応版</title>
+<title>地図ゲッサー v0.27 - ラベル無し地図クイズ／都市重複防止版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -402,7 +402,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.25</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.27</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="timerStat"><span class="val" id="timerVal">--</span><span class="lbl">残り秒</span></div>
@@ -448,7 +448,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.25</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.27</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div id="sharedQuizBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
         <p id="sharedQuizBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
@@ -571,7 +571,7 @@
   "use strict";
 
   // ---------- config ----------
-  const VERSION = '0.25';
+  const VERSION = '0.27';
 
   // ランキング機能ダカラ。使ウナラ、下ノFIREBASE_CONFIGヲ自分ノFirebaseプロジェクトノ値ニ書キ換エルダケデOKダヨ。
   // 書キ換エナカッタラ、ランキング関連ノボタン、自動デ隠レルカラ、ゲーム自体ハ普通ニ遊ベルヨ。
@@ -650,6 +650,7 @@
   let currentZoom=null; // シェア用に今のラウンドのズームを覚えとくヨ
   let sharedRounds=null, sharedMeta=null; // 共有された「問題」を受け取った時ダケ入るヨ
   let sharedResultInfo=null; // 共有された「スコア」を受け取った時ダケ入るヨ
+  let usedCityKeys=new Set(); // 同ジゲーム内デ、モウ出タ都市ヲ覚エテオク（重複避ケル用ダヨ）
 
   const $ = id => document.getElementById(id);
   const isMobile = () => window.matchMedia('(max-width: 640px)').matches;
@@ -810,7 +811,14 @@
         pool = mode==='japan' ? CITIES_JAPAN : CITIES_WORLD;
       }
     }
-    const c = pool[Math.floor(Math.random()*pool.length)];
+    // 同ジ都市、二回出ナイヨウ、モウ使ッタ都市ハ避ケルヨ（プール全部使イ切ッタラ、諦メテ重複許ストコロダケ例外ダヨ）
+    let c, key, tries = 0;
+    do{
+      c = pool[Math.floor(Math.random()*pool.length)];
+      key = c[0] + ',' + c[1];
+      tries++;
+    } while(usedCityKeys.has(key) && tries < 50 && usedCityKeys.size < pool.length);
+    usedCityKeys.add(key);
 
     // ちょっとだけ揺らして毎回同じ点にならないようにするヨ（だいたい±2km程度ダカラ）。
     // 揺らした先が海だったら、揺らし幅を狭めながら何回か引き直すヨ（陸地マスクで一瞬判定ダカラ、通信要らないヨ）
@@ -917,15 +925,12 @@
     clearTimers();
     $('resultPanel').style.display = 'none';
     $('guessPanel').classList.remove('hidden');
-    if(isMobile()){
-      $('guessPanel').classList.add('collapsed'); // スマホは最初シート閉じて、メイン地図を広く見せるヨ
-      $('guessCollapseBtn').textContent = '▲';
-      $('guessCollapseBtn').title = '広げる';
-    } else {
-      $('guessPanel').classList.remove('collapsed');
-      $('guessCollapseBtn').textContent = '▼';
-      $('guessCollapseBtn').title = '折りたたむ';
-    }
+    // 地図合わセ処理する間ハ、必ズ開イタ状態（非表示ジャナイ）ニしとくヨ。
+    // 非表示（display:none）ノ間ハ地図ノ大キサ0ノままダカラ、fitBoundsガ変ナ場所ニ飛ブ原因ニなるダヨ
+    $('guessPanel').classList.remove('collapsed');
+    $('guessCollapseBtn').textContent = '▼';
+    $('guessCollapseBtn').title = '折りたたむ';
+
     $('loadingPanel').style.display = 'flex';
     mainMap.setMaxBounds(null);
     mainMap.setMinZoom(0);
@@ -941,6 +946,12 @@
       if(mode === 'japan'){
         // 日本モードダカラ、回答マップも最初カラ日本ヘンヲ映スヨ
         guessMap.fitBounds([[24, 122], [46, 146]], {padding:[8,8]});
+      }
+      // 地図ノ表示、決マッタ後デ、スマホナラここデたたムヨ（見タ目ハ隠れても、中身ノビュー状態ハ保持サレルカラ大丈夫ダヨ）
+      if(isMobile()){
+        $('guessPanel').classList.add('collapsed');
+        $('guessCollapseBtn').textContent = '▲';
+        $('guessCollapseBtn').title = '広げる';
       }
     });
 
@@ -1342,7 +1353,7 @@
     makeCollapsible($('resultPanel'), $('resultCollapseBtn'), $('resultPanel').querySelector('.ghead'), () => resultMap.invalidateSize());
 
     function beginGame(){
-      round = 1; totalScore = 0; roundHistory = [];
+      round = 1; totalScore = 0; roundHistory = []; usedCityKeys = new Set();
       prefetchedRound = null; prefetchPromise = null;
       $('startPanel').classList.add('hidden');
       $('statsBar').classList.remove('hidden');
