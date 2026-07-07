@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.27 - ラベル無し地図クイズ／都市重複防止版</title>
+<title>地図ゲッサー v0.32 - ラベル無し地図クイズ／解放累進方式版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -402,7 +402,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.27</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.32</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="timerStat"><span class="val" id="timerVal">--</span><span class="lbl">残り秒</span></div>
@@ -448,7 +448,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.27</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.32</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div id="sharedQuizBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
         <p id="sharedQuizBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
@@ -463,7 +463,13 @@
         <select id="modeSelect">
           <option value="world">世界（ぜんぶ）</option>
           <option value="japan">日本国内だけ</option>
+          <option value="region">地域を選ぶ</option>
         </select>
+      </div>
+      <div id="regionPickerRow" class="fieldRow hidden">
+        <label>地域（複数選べるヨ）</label>
+        <div id="regionUnlockStatus" style="font-size:12px; margin-bottom:6px; color: var(--brass-light, #c9a876);"></div>
+        <div id="regionCheckboxes" style="display:grid; grid-template-columns:1fr 1fr; gap:6px 10px; font-size:13px; max-height:220px; overflow-y:auto; padding:8px; border:1px solid rgba(168,130,63,0.3); border-radius:6px;"></div>
       </div>
       <div class="fieldRow">
         <label>出題スタイル</label>
@@ -566,12 +572,14 @@
 <script src="cities_data_mega.js"></script>
 <!-- 海岸線判定用ダカラ。RLE圧縮した陸地マスクデータダヨ -->
 <script src="landmask_data.js"></script>
+<!-- 地域選択モード用データダカラ -->
+<script src="regions_data.js"></script>
 <script>
 (function(){
   "use strict";
 
   // ---------- config ----------
-  const VERSION = '0.27';
+  const VERSION = '0.32';
 
   // ランキング機能ダカラ。使ウナラ、下ノFIREBASE_CONFIGヲ自分ノFirebaseプロジェクトノ値ニ書キ換エルダケデOKダヨ。
   // 書キ換エナカッタラ、ランキング関連ノボタン、自動デ隠レルカラ、ゲーム自体ハ普通ニ遊ベルヨ。
@@ -644,6 +652,9 @@
   let difficulty='normal', timeSetting='unlimited';
   let cityMode=false;
   let megaMode=false;
+  let selectedRegions=[]; // 「地域を選ぶ」モードの時、チェックされた地域キーの配列ダヨ
+  let totalXP=0; // 累計経験値（localStorageに貯まるヨ）
+  let unlockedRegions=new Set(); // 解放済みの地域キー集合ダヨ
   let countdownInterval=null, secondsLeft=0;
   let currentStyleKey='voyager', mainTileLayer=null;
   let prefetchedRound=null, prefetchPromise=null; // 次の問題の先読み用ダカラ
@@ -742,12 +753,33 @@
     return cur === 1;
   }
 
+  // 地域選択モード：選バレタ地域ノ範囲内デ座標ヲ引クヨ（日付変更線マタグ地域モ対応スルダカラ）
+  function sampleLatLonInRegion(regionKey){
+    const b = REGION_BOUNDS[regionKey]; // [minLat, minLon, maxLat, maxLon]
+    const lat = b[0] + Math.random()*(b[2]-b[0]);
+    let lon;
+    if(b[1] > b[3]){
+      // minLon > maxLonナラ、日付変更線ヲマタイデル印ダカラ、特別ニ扱ウヨ
+      const span1 = 180 - b[1];
+      const span2 = b[3] - (-180);
+      const r = Math.random()*(span1+span2);
+      lon = r < span1 ? b[1] + r : -180 + (r - span1);
+    } else {
+      lon = b[1] + Math.random()*(b[3]-b[1]);
+    }
+    return {lat, lon};
+  }
+
   async function getRandomPoint(mode, zoom){
     for(let i=0;i<15;i++){
       let lat, lon;
       if(mode==='japan'){
         lat = 26 + Math.random()*(45.5-26);
         lon = 128.5 + Math.random()*(145.5-128.5);
+      } else if(mode==='region' && selectedRegions.length > 0){
+        const regionKey = selectedRegions[Math.floor(Math.random()*selectedRegions.length)];
+        const p = sampleLatLonInRegion(regionKey);
+        lat = p.lat; lon = p.lon;
       } else {
         lat = -55 + Math.random()*(70-(-55));
         lon = -180 + Math.random()*360;
@@ -772,6 +804,17 @@
         if(geo === false || geo.countryCode !== 'jp'){
           continue; // 他国の陸地だったら引き直すヨ（北方領土・対馬海峡の向こう側とか対策ダカラ）
         }
+        return {lat, lon, name: geo.name};
+      }
+      if(mode === 'region' && selectedRegions.length > 0){
+        // 地域選択モードダカラ、選バレタ地域ノ国ニ本当ニ入ッテルカ確認スルヨ（バウンディングボックスハ隣国モ含ムカラ）
+        const geo = await reverseGeocode(lat, lon);
+        if(geo === null){
+          return {lat, lon, name: '（選んだ地域のどこか）'};
+        }
+        if(geo === false) continue;
+        const geoRegion = COUNTRY_TO_REGION[(geo.countryCode||'').toUpperCase()];
+        if(!selectedRegions.includes(geoRegion)) continue;
         return {lat, lon, name: geo.name};
       }
       return {lat, lon, name: '（陸地）'};
@@ -810,6 +853,11 @@
       } else {
         pool = mode==='japan' ? CITIES_JAPAN : CITIES_WORLD;
       }
+    }
+    if(mode === 'region' && selectedRegions.length > 0){
+      // 地域選択モードダカラ、選バレタ地域ノ国ダケニ絞リ込ムヨ
+      const filtered = pool.filter(c => selectedRegions.includes(COUNTRY_TO_REGION[c[3]]));
+      if(filtered.length > 0) pool = filtered; // 該当ナシナラ、元ノ世界プールノまま使うヨ（安全策ダカラ）
     }
     // 同ジ都市、二回出ナイヨウ、モウ使ッタ都市ハ避ケルヨ（プール全部使イ切ッタラ、諦メテ重複許ストコロダケ例外ダヨ）
     let c, key, tries = 0;
@@ -946,6 +994,17 @@
       if(mode === 'japan'){
         // 日本モードダカラ、回答マップも最初カラ日本ヘンヲ映スヨ
         guessMap.fitBounds([[24, 122], [46, 146]], {padding:[8,8]});
+      } else if(mode === 'region' && selectedRegions.length > 0){
+        // 地域選択モードダカラ、選バレタ地域全部入ル範囲ニ合わせるヨ
+        let unionBounds = null;
+        selectedRegions.forEach(key => {
+          const b = REGION_BOUNDS[key];
+          if(!b) return;
+          const lo = Math.min(b[1], b[3]), hi = Math.max(b[1], b[3]);
+          const bounds = L.latLngBounds([b[0], lo], [b[2], hi]);
+          unionBounds = unionBounds ? unionBounds.extend(bounds) : bounds;
+        });
+        if(unionBounds) guessMap.fitBounds(unionBounds, {padding:[8,8]});
       }
       // 地図ノ表示、決マッタ後デ、スマホナラここデたたムヨ（見タ目ハ隠れても、中身ノビュー状態ハ保持サレルカラ大丈夫ダヨ）
       if(isMobile()){
@@ -976,7 +1035,7 @@
       prefetchPromise = null;
     } else {
       // 先読みが間に合ッテなかったパターン、今まで通りココで取得するヨ
-      const range = ZOOM_CONFIG[difficulty][mode];
+      const range = ZOOM_CONFIG[difficulty][mode==='japan' ? 'japan' : 'world'];
       zoom = range[0] + Math.floor(Math.random()*(range[1]-range[0]+1));
       pt = await getRoundPoint(mode, zoom);
     }
@@ -986,9 +1045,15 @@
     mainMap.setView([pt.lat, pt.lon], zoom, {animate:false});
     setTimeout(()=>{
       mainMap.invalidateSize();
-      // 現在表示中の範囲を「これ以上動けない・引けない」枠として固定するヨ
+      // 「動ケル範囲」ハ画面ノ形（細長イ・横広イ）ニ関係ナク、決マッタ広サニ固定スルヨ。
+      // 細長イすまほ画面デ最初ハ切レテ見エテモ、指デ動カセバ同ジ範囲、全部見レルヨウニナルダカラ
       mainMap.setMinZoom(zoom);
-      mainMap.setMaxBounds(mainMap.getBounds());
+      const {degLat, degLon} = estimateHalfExtentDeg(zoom, pt.lat);
+      const revealBounds = L.latLngBounds(
+        [pt.lat - degLat, pt.lon - degLon],
+        [pt.lat + degLat, pt.lon + degLon]
+      );
+      mainMap.setMaxBounds(revealBounds);
     }, 60);
 
     $('loadingPanel').style.display = 'none';
@@ -1006,7 +1071,7 @@
     if(sharedRounds) return; // 共有問題ダト座標固定済ミダカラ、先読み不要ダヨ
     const nextRoundNum = round + 1;
     if(nextRoundNum > totalRounds) return; // もう次が無いダカラ、先読み不要ダヨ
-    const range = ZOOM_CONFIG[difficulty][mode];
+    const range = ZOOM_CONFIG[difficulty][mode==='japan' ? 'japan' : 'world'];
     const zoom = range[0] + Math.floor(Math.random()*(range[1]-range[0]+1));
     const p = getRoundPoint(mode, zoom).then(pt => {
       const result = {pt, zoom};
@@ -1029,6 +1094,7 @@
       dist = haversine(guessLatLng.lat, guessLatLng.lng, actualLatLng.lat, actualLatLng.lon);
       pts = scoreFromDistance(dist, mode);
       totalScore += pts;
+      addXP(pts); // 経験値ニも足シテ、地域解放ノ元ニするヨ
     }
 
     // 結果一覧・Googleマップリンク・問題共有用ニ、コノラウンドノ記録ヲ残スヨ
@@ -1218,6 +1284,74 @@
     }
   }
 
+  // ---------- 経験値・地域解放システム ----------
+  function loadProgress(){
+    totalXP = parseInt(localStorage.getItem('mapguess_totalxp') || '0', 10) || 0;
+    try{
+      unlockedRegions = new Set(JSON.parse(localStorage.getItem('mapguess_unlocked_regions') || '[]'));
+    }catch(e){ unlockedRegions = new Set(); }
+  }
+  function saveProgress(){
+    localStorage.setItem('mapguess_totalxp', String(totalXP));
+    localStorage.setItem('mapguess_unlocked_regions', JSON.stringify(Array.from(unlockedRegions)));
+  }
+  function addXP(pts){
+    if(pts <= 0) return;
+    totalXP += pts;
+    saveProgress();
+  }
+  // 解放チャンス、何回貯マッタカ計算スルヨ（最初15000点、ソノ後段々必要点数増エテイク累進方式ダカラ）
+  function unlockChoicesEarnedFromXP(xp){
+    let count = 0, total = 0, step = 15000;
+    while(total + step <= xp){
+      total += step; step += 2500; count++;
+    }
+    return count;
+  }
+  function xpNeededForNextChoice(xp){
+    let total = 0, step = 15000;
+    while(total + step <= xp){ total += step; step += 2500; }
+    return total + step;
+  }
+  function availableUnlockChoices(){
+    const earned = 1 + unlockChoicesEarnedFromXP(totalXP); // 最初ノ1回ハ無料ダヨ
+    return Math.max(0, earned - unlockedRegions.size);
+  }
+
+  function renderRegionPicker(){
+    const container = $('regionCheckboxes');
+    container.innerHTML = '';
+    const choices = availableUnlockChoices();
+    $('regionUnlockStatus').textContent = choices > 0
+      ? `🔓 解放チャンス：${choices}回分アルヨ！好きナ地域、選んでネ`
+      : `経験値：${totalXP}点／次ノ解放マデ、あと${xpNeededForNextChoice(totalXP)-totalXP}点ダヨ`;
+    REGION_ORDER.forEach(key => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex; align-items:center; gap:6px; min-height:24px;';
+      if(unlockedRegions.has(key)){
+        row.innerHTML = `<label style="display:flex; align-items:center; gap:4px; cursor:pointer; margin:0;">
+          <input type="checkbox" class="regionCheckbox" value="${key}" style="width:auto;"> <span>${REGION_LABELS[key]}</span>
+        </label>`;
+      } else if(choices > 0){
+        row.innerHTML = `<span style="opacity:0.6;">🔒 ${REGION_LABELS[key]}</span>
+          <button type="button" class="btn unlockRegionBtn" data-region="${key}" style="padding:2px 8px; font-size:11px; flex-shrink:0;">解放</button>`;
+      } else {
+        row.innerHTML = `<span style="opacity:0.4;">🔒 ${REGION_LABELS[key]}</span>`;
+      }
+      container.appendChild(row);
+    });
+    container.querySelectorAll('.unlockRegionBtn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.region;
+        if(availableUnlockChoices() > 0 && !unlockedRegions.has(key)){
+          unlockedRegions.add(key);
+          saveProgress();
+          renderRegionPicker(); // 解放シタラ、再描画スルヨ
+        }
+      });
+    });
+  }
+
   function mapsLink(lat, lon){
     return `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
   }
@@ -1352,6 +1486,15 @@
     makeCollapsible($('guessPanel'), $('guessCollapseBtn'), $('guessPanel').querySelector('.ghead'), () => guessMap.invalidateSize());
     makeCollapsible($('resultPanel'), $('resultCollapseBtn'), $('resultPanel').querySelector('.ghead'), () => resultMap.invalidateSize());
 
+    // ---------- 地域選択モードの準備 ----------
+    loadProgress();
+    renderRegionPicker();
+    $('modeSelect').addEventListener('change', () => {
+      const isRegion = $('modeSelect').value === 'region';
+      $('regionPickerRow').classList.toggle('hidden', !isRegion);
+      if(isRegion) renderRegionPicker(); // 開く度に最新の解放状況で描き直すヨ
+    });
+
     function beginGame(){
       round = 1; totalScore = 0; roundHistory = []; usedCityKeys = new Set();
       prefetchedRound = null; prefetchPromise = null;
@@ -1371,6 +1514,13 @@
       timeSetting = $('timeSelect').value;
       totalRounds = parseInt($('roundsSelect').value, 10);
       sharedRounds = null; // 通常スタートダカラ、共有問題ノ固定座標ハ使わナイヨ
+      if(mode === 'region'){
+        selectedRegions = Array.from(document.querySelectorAll('.regionCheckbox:checked')).map(el => el.value);
+        if(selectedRegions.length === 0){
+          alert('地域、少なくとも1つは選んデネ！');
+          return;
+        }
+      }
       beginGame();
     });
 
