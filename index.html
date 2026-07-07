@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.32 - ラベル無し地図クイズ／解放累進方式版</title>
+<title>地図ゲッサー v0.35 - ラベル無し地図クイズ／ステータス画面統合版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -146,7 +146,7 @@
   #mainMap.blurred{ filter: sepia(8%) saturate(0.9) blur(2px) brightness(0.7); }
 
   /* ---------- Start overlay ---------- */
-  #startPanel, #finalPanel, #rankingPanel, #roundResultsPanel, #sharePanel{
+  #startPanel, #finalPanel, #rankingPanel, #roundResultsPanel, #sharePanel, #progressMapPanel{
     position:absolute; inset:0; z-index:2000;
     display:flex; align-items:center; justify-content:center;
     background: radial-gradient(circle at 50% 40%, rgba(27,42,65,0.92), rgba(10,16,26,0.97));
@@ -402,7 +402,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.32</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.35</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="timerStat"><span class="val" id="timerVal">--</span><span class="lbl">残り秒</span></div>
@@ -448,7 +448,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.32</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.35</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div id="sharedQuizBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
         <p id="sharedQuizBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
@@ -469,7 +469,7 @@
       <div id="regionPickerRow" class="fieldRow hidden">
         <label>地域（複数選べるヨ）</label>
         <div id="regionUnlockStatus" style="font-size:12px; margin-bottom:6px; color: var(--brass-light, #c9a876);"></div>
-        <div id="regionCheckboxes" style="display:grid; grid-template-columns:1fr 1fr; gap:6px 10px; font-size:13px; max-height:220px; overflow-y:auto; padding:8px; border:1px solid rgba(168,130,63,0.3); border-radius:6px;"></div>
+        <div id="regionCheckboxes" style="display:flex; flex-direction:column; gap:4px; font-size:13px; max-height:220px; overflow-y:auto; padding:8px; border:1px solid rgba(168,130,63,0.3); border-radius:6px;"></div>
       </div>
       <div class="fieldRow">
         <label>出題スタイル</label>
@@ -506,6 +506,7 @@
       </div>
       <button class="btn brass" id="startBtn">スタートするヨ</button>
       <button class="btn" id="viewRankingFromStartBtn" style="margin-top:8px;">🏆 ランキングを見る</button>
+      <button type="button" class="btn" id="viewStatusBtn" style="margin-top:8px;">📊 ステータス（経験値・解放地域）</button>
     </div>
   </div>
 
@@ -560,6 +561,16 @@
     </div>
   </div>
 
+  <div id="progressMapPanel" class="hidden">
+    <div class="card" style="max-width:640px; width:94%;">
+      <h2>📊 ステータスダヨ</h2>
+      <p id="progressMapSummary" style="font-size:13px; margin:0 0 10px 0;"></p>
+      <div id="progressMapEl" style="width:100%; height:360px; border-radius:6px; overflow:hidden;"></div>
+      <p style="font-size:12px; opacity:0.75; margin:8px 0 0 0;">🟩 解放済ミ　🟥 未解放</p>
+      <button class="btn brass" id="closeProgressMapBtn" style="margin-top:10px;">閉じる</button>
+    </div>
+  </div>
+
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -579,7 +590,7 @@
   "use strict";
 
   // ---------- config ----------
-  const VERSION = '0.32';
+  const VERSION = '0.35';
 
   // ランキング機能ダカラ。使ウナラ、下ノFIREBASE_CONFIGヲ自分ノFirebaseプロジェクトノ値ニ書キ換エルダケデOKダヨ。
   // 書キ換エナカッタラ、ランキング関連ノボタン、自動デ隠レルカラ、ゲーム自体ハ普通ニ遊ベルヨ。
@@ -1327,16 +1338,17 @@
       : `経験値：${totalXP}点／次ノ解放マデ、あと${xpNeededForNextChoice(totalXP)-totalXP}点ダヨ`;
     REGION_ORDER.forEach(key => {
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex; align-items:center; gap:6px; min-height:24px;';
+      row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:28px;';
       if(unlockedRegions.has(key)){
-        row.innerHTML = `<label style="display:flex; align-items:center; gap:4px; cursor:pointer; margin:0;">
-          <input type="checkbox" class="regionCheckbox" value="${key}" style="width:auto;"> <span>${REGION_LABELS[key]}</span>
+        row.innerHTML = `<label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin:0; min-width:0; flex:1;">
+          <input type="checkbox" class="regionCheckbox" value="${key}" style="width:auto; flex-shrink:0;">
+          <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${REGION_LABELS[key]}</span>
         </label>`;
       } else if(choices > 0){
-        row.innerHTML = `<span style="opacity:0.6;">🔒 ${REGION_LABELS[key]}</span>
-          <button type="button" class="btn unlockRegionBtn" data-region="${key}" style="padding:2px 8px; font-size:11px; flex-shrink:0;">解放</button>`;
+        row.innerHTML = `<span style="opacity:0.6; min-width:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🔒 ${REGION_LABELS[key]}</span>
+          <button type="button" class="btn unlockRegionBtn" data-region="${key}" style="width:auto; display:inline-block; flex-shrink:0; padding:4px 12px; margin:0; font-size:11px;">解放</button>`;
       } else {
-        row.innerHTML = `<span style="opacity:0.4;">🔒 ${REGION_LABELS[key]}</span>`;
+        row.innerHTML = `<span style="opacity:0.4; min-width:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🔒 ${REGION_LABELS[key]}</span>`;
       }
       container.appendChild(row);
     });
@@ -1347,6 +1359,44 @@
           unlockedRegions.add(key);
           saveProgress();
           renderRegionPicker(); // 解放シタラ、再描画スルヨ
+        }
+      });
+    });
+  }
+
+  // ---------- 進捗マップ（解放状況ヲ世界地図デ見ルヤツ） ----------
+  let progressMap = null;
+  function showProgressMap(){
+    $('progressMapPanel').classList.remove('hidden');
+    $('progressMapSummary').textContent = `経験値：${totalXP}点／解放済ミ：${unlockedRegions.size}/${REGION_ORDER.length}地域ダヨ`;
+    if(!progressMap){
+      progressMap = L.map('progressMapEl', {zoomControl:true, worldCopyJump:false}).setView([15,10], 1);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', {
+        subdomains:'abcd', maxZoom: 6, attribution: ''
+      }).addTo(progressMap);
+    }
+    waitForMapSize(progressMap, () => {
+      progressMap.invalidateSize();
+      // 既存の色塗り四角、消してから描き直すヨ
+      progressMap.eachLayer(l => { if(l._isRegionBox) progressMap.removeLayer(l); });
+      REGION_ORDER.forEach(key => {
+        const b = REGION_BOUNDS[key];
+        if(!b) return;
+        const unlocked = unlockedRegions.has(key);
+        const color = unlocked ? '#4c8c4a' : '#a83a3a';
+        const drawBox = (lo, hi) => {
+          const rect = L.rectangle([[b[0], lo],[b[2], hi]], {
+            color, weight:1, fillColor:color, fillOpacity: unlocked ? 0.45 : 0.25
+          }).addTo(progressMap);
+          rect._isRegionBox = true;
+          rect.bindTooltip(REGION_LABELS[key], {sticky:true});
+        };
+        if(b[1] > b[3]){
+          // 日付変更線マタグ地域ダカラ、二つニ分けて描くヨ
+          drawBox(b[1], 180);
+          drawBox(-180, b[3]);
+        } else {
+          drawBox(b[1], b[3]);
         }
       });
     });
@@ -1554,6 +1604,8 @@
     // ---------- 共有機能の配線 ----------
     $('openShareBtn').addEventListener('click', openSharePanel);
     $('closeShareBtn').addEventListener('click', () => $('sharePanel').classList.add('hidden'));
+    $('viewStatusBtn').addEventListener('click', showProgressMap);
+    $('closeProgressMapBtn').addEventListener('click', () => $('progressMapPanel').classList.add('hidden'));
     $('copyQuizUrlBtn').addEventListener('click', () => copyToClipboard($('shareQuizUrlInput').value, $('shareStatus')));
     $('copyScoreUrlBtn').addEventListener('click', () => copyToClipboard($('shareScoreUrlInput').value, $('shareStatus')));
 
