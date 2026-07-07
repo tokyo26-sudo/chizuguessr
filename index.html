@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.15 - ラベル無し地図クイズ／陸地マスク対応版</title>
+<title>地図ゲッサー v0.17 - ラベル無し地図クイズ／大都市・全市町村対応版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -386,7 +386,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.15</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.17</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="timerStat"><span class="val" id="timerVal">--</span><span class="lbl">残り秒</span></div>
@@ -432,7 +432,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.15</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.17</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div class="fieldRow">
         <label>出題エリア</label>
@@ -446,6 +446,13 @@
         <label style="display:flex; align-items:center; gap:6px; font-weight:normal;">
           <input type="checkbox" id="cityModeCheckbox" style="width:auto;">
           <span style="font-size:13px;">有名な都市の周辺だけ出題（速いヨ・地方も混ざるヨ）</span>
+        </label>
+      </div>
+      <div class="fieldRow">
+        <label>都市の範囲</label>
+        <label style="display:flex; align-items:center; gap:6px; font-weight:normal;">
+          <input type="checkbox" id="megaModeCheckbox" style="width:auto;">
+          <span style="font-size:13px;">世界は大都市のみ・日本は市町村まで細かく（都市モード時ダケ有効ダヨ）</span>
         </label>
       </div>
       <div class="fieldRow">
@@ -509,6 +516,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <!-- 都市モード用データダカラ。主要分ハ最初カラ読込ンデ、むずかしい用ノ追加分ハ必要ナ時ダケ後カラ読込ムヨ -->
 <script src="cities_data.js"></script>
+<!-- 大都市（世界）・全市町村（日本）用データダカラ。小サイから最初カラ読込ムヨ -->
+<script src="cities_data_mega.js"></script>
 <!-- 海岸線判定用ダカラ。RLE圧縮した陸地マスクデータダヨ -->
 <script src="landmask_data.js"></script>
 <script>
@@ -516,7 +525,7 @@
   "use strict";
 
   // ---------- config ----------
-  const VERSION = '0.15';
+  const VERSION = '0.17';
 
   // ランキング機能ダカラ。使ウナラ、下ノFIREBASE_CONFIGヲ自分ノFirebaseプロジェクトノ値ニ書キ換エルダケデOKダヨ。
   // 書キ換エナカッタラ、ランキング関連ノボタン、自動デ隠レルカラ、ゲーム自体ハ普通ニ遊ベルヨ。
@@ -587,6 +596,7 @@
   let round=1, totalRounds=5, totalScore=0, mode='world';
   let difficulty='normal', timeSetting='unlimited';
   let cityMode=false;
+  let megaMode=false;
   let countdownInterval=null, secondsLeft=0;
   let currentStyleKey='voyager', mainTileLayer=null;
   let prefetchedRound=null, prefetchPromise=null; // 次の問題の先読み用ダカラ
@@ -726,13 +736,18 @@
 
   // 都市モード：GeoNamesベースの都市リストから選ブヨ。揺らした先が海ダッタラ、陸地マスクで陸地見ツカルマデ揺らし直すダカラ
   function getRandomCityPoint(mode){
-    // むずかしい設定ダト、追加データ（小サイ町モ入ッタヤツ）読込ミ済ミナラソッチ優先シテ使ウヨ
-    const useHard = difficulty === 'hard' && typeof CITIES_WORLD_HARD !== 'undefined';
     let pool;
-    if(useHard){
-      pool = mode==='japan' ? CITIES_JAPAN_HARD : CITIES_WORLD_HARD;
+    if(megaMode && typeof CITIES_WORLD_MEGA !== 'undefined'){
+      // 大都市のみ（世界）／全市町村（日本）モードダカラ、コッチ優先スルヨ
+      pool = mode==='japan' ? CITIES_JAPAN_ALL : CITIES_WORLD_MEGA;
     } else {
-      pool = mode==='japan' ? CITIES_JAPAN : CITIES_WORLD;
+      // むずかしい設定ダト、追加データ（小サイ町モ入ッタヤツ）読込ミ済ミナラソッチ優先シテ使ウヨ
+      const useHard = difficulty === 'hard' && typeof CITIES_WORLD_HARD !== 'undefined';
+      if(useHard){
+        pool = mode==='japan' ? CITIES_JAPAN_HARD : CITIES_WORLD_HARD;
+      } else {
+        pool = mode==='japan' ? CITIES_JAPAN : CITIES_WORLD;
+      }
     }
     const c = pool[Math.floor(Math.random()*pool.length)];
 
@@ -859,7 +874,13 @@
     if(guessMarker){ guessMap.removeLayer(guessMarker); guessMarker=null; }
     guessLatLng = null;
     guessMap.setView([20,0], 1);
-    setTimeout(()=> guessMap.invalidateSize(), 50);
+    setTimeout(()=>{
+      guessMap.invalidateSize();
+      if(mode === 'japan'){
+        // 日本モードダカラ、回答マップも最初カラ日本ヘンヲ映スヨ（サイズ確定後ジャナイとズレるカラ、コッチデやるヨ）
+        guessMap.fitBounds([[24, 122], [46, 146]], {padding:[8,8]});
+      }
+    }, 50);
 
     const range = ZOOM_CONFIG[difficulty][mode];
     let zoom, pt;
@@ -1136,6 +1157,7 @@
     $('startBtn').addEventListener('click', () => {
       mode = $('modeSelect').value;
       cityMode = $('cityModeCheckbox').checked;
+      megaMode = $('megaModeCheckbox').checked;
       difficulty = $('difficultySelect').value;
       timeSetting = $('timeSelect').value;
       totalRounds = parseInt($('roundsSelect').value, 10);
