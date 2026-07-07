@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.19 - ラベル無し地図クイズ／出題スタイル統合版</title>
+<title>地図ゲッサー v0.22 - ラベル無し地図クイズ／共有URL対応版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -138,7 +138,7 @@
   #mainMap.blurred{ filter: sepia(8%) saturate(0.9) blur(2px) brightness(0.7); }
 
   /* ---------- Start overlay ---------- */
-  #startPanel, #finalPanel, #rankingPanel, #roundResultsPanel{
+  #startPanel, #finalPanel, #rankingPanel, #roundResultsPanel, #sharePanel{
     position:absolute; inset:0; z-index:2000;
     display:flex; align-items:center; justify-content:center;
     background: radial-gradient(circle at 50% 40%, rgba(27,42,65,0.92), rgba(10,16,26,0.97));
@@ -337,15 +337,16 @@
     .leaflet-top.leaflet-left{ top: 132px !important; left: 10px !important; }
     .leaflet-control-zoom a{ width:40px !important; height:40px !important; line-height:40px !important; }
 
-    /* ---- 地図パターン切り替え：横並びの帯にするヨ ---- */
+    /* ---- 地図パターン切り替え：回答パネル（ボトムシート）ニ隠レナイヨウ、画面上部・右側ニ移動スルヨ ---- */
     #styleSwitcher{
-      left:8px; right:8px; bottom:70px; width:auto;
-      flex-direction:row; justify-content:space-between; gap:4px;
+      left:auto; right:8px; bottom:auto; top:130px; width:100px;
+      flex-direction:column; gap:4px;
       padding:6px;
+      z-index:1600; /* ボトムシート（1500）ヨリ手前ニ出すヨ */
     }
     #styleSwitcher .swLabel{ display:none; }
     #styleSwitcher .swBtn{
-      flex:1; text-align:center; padding:10px 2px; font-size:10px;
+      text-align:center; padding:8px 4px; font-size:10px;
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     }
 
@@ -393,7 +394,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.19</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.22</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="timerStat"><span class="val" id="timerVal">--</span><span class="lbl">残り秒</span></div>
@@ -439,8 +440,16 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.19</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.22</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
+      <div id="sharedQuizBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
+        <p id="sharedQuizBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
+        <button class="btn brass" id="playSharedQuizBtn" style="width:100%;">コノ問題ニ挑戦スル</button>
+      </div>
+      <div id="sharedResultBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
+        <p id="sharedResultBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
+        <button class="btn" id="matchSharedSettingsBtn" style="width:100%;">同ジ設定ヲ当テハメル</button>
+      </div>
       <div class="fieldRow">
         <label>出題エリア</label>
         <select id="modeSelect">
@@ -497,6 +506,7 @@
         <div id="rankingSubmitStatus" style="font-size:13px; margin-top:6px; min-height:1em;"></div>
       </div>
       <button class="btn" id="viewRoundResultsBtn">📋 ラウンド結果一覧</button>
+      <button class="btn" id="openShareBtn">🔗 共有スル</button>
       <button class="btn" id="viewRankingBtn">🏆 ランキングを見る</button>
       <button class="btn brass" id="restartBtn">もう一回あそぶ</button>
     </div>
@@ -518,6 +528,28 @@
     </div>
   </div>
 
+  <div id="sharePanel" class="hidden">
+    <div class="card" style="max-width:520px;">
+      <h2>🔗 共有リンクダヨ</h2>
+      <div class="fieldRow">
+        <label style="font-size:13px;">コノ問題ヲ共有（同ジ場所デ挑戦デキルヨ）</label>
+        <div style="display:flex; gap:6px;">
+          <input type="text" id="shareQuizUrlInput" readonly style="flex:1; font-size:12px;">
+          <button class="btn" id="copyQuizUrlBtn" style="flex-shrink:0;">コピー</button>
+        </div>
+      </div>
+      <div class="fieldRow">
+        <label style="font-size:13px;">スコアダケ共有（結果報告用ダヨ）</label>
+        <div style="display:flex; gap:6px;">
+          <input type="text" id="shareScoreUrlInput" readonly style="flex:1; font-size:12px;">
+          <button class="btn" id="copyScoreUrlBtn" style="flex-shrink:0;">コピー</button>
+        </div>
+      </div>
+      <div id="shareStatus" style="font-size:13px; min-height:1em; margin-bottom:10px;"></div>
+      <button class="btn brass" id="closeShareBtn">閉じる</button>
+    </div>
+  </div>
+
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -535,7 +567,7 @@
   "use strict";
 
   // ---------- config ----------
-  const VERSION = '0.19';
+  const VERSION = '0.22';
 
   // ランキング機能ダカラ。使ウナラ、下ノFIREBASE_CONFIGヲ自分ノFirebaseプロジェクトノ値ニ書キ換エルダケデOKダヨ。
   // 書キ換エナカッタラ、ランキング関連ノボタン、自動デ隠レルカラ、ゲーム自体ハ普通ニ遊ベルヨ。
@@ -611,9 +643,23 @@
   let countdownInterval=null, secondsLeft=0;
   let currentStyleKey='voyager', mainTileLayer=null;
   let prefetchedRound=null, prefetchPromise=null; // 次の問題の先読み用ダカラ
+  let currentZoom=null; // シェア用に今のラウンドのズームを覚えとくヨ
+  let sharedRounds=null, sharedMeta=null; // 共有された「問題」を受け取った時ダケ入るヨ
+  let sharedResultInfo=null; // 共有された「スコア」を受け取った時ダケ入るヨ
 
   const $ = id => document.getElementById(id);
   const isMobile = () => window.matchMedia('(max-width: 640px)').matches;
+
+  // 地図パネルのサイズが0のまま計算スルト変な場所ニ変な倍率デ飛ブカラ、ちゃんとサイズ確定スルマデ待つヨ
+  function waitForMapSize(map, cb, tries){
+    tries = tries || 0;
+    const size = map.getSize();
+    if((size.x > 10 && size.y > 10) || tries > 20){
+      cb();
+    } else {
+      requestAnimationFrame(() => waitForMapSize(map, cb, tries+1));
+    }
+  }
 
   function haversine(lat1,lon1,lat2,lon2){
     const R=6371;
@@ -885,18 +931,24 @@
     if(guessMarker){ guessMap.removeLayer(guessMarker); guessMarker=null; }
     guessLatLng = null;
     guessMap.setView([20,0], 1);
-    setTimeout(()=>{
+    // パネルのサイズがちゃんと確定してから合わせる（0サイズノ時ニ計算スルト変な場所ニ変な倍率デ飛ブカラ）ダヨ
+    waitForMapSize(guessMap, () => {
       guessMap.invalidateSize();
       if(mode === 'japan'){
-        // 日本モードダカラ、回答マップも最初カラ日本ヘンヲ映スヨ（サイズ確定後ジャナイとズレるカラ、コッチデやるヨ）
+        // 日本モードダカラ、回答マップも最初カラ日本ヘンヲ映スヨ
         guessMap.fitBounds([[24, 122], [46, 146]], {padding:[8,8]});
       }
-    }, 50);
+    });
 
-    const range = ZOOM_CONFIG[difficulty][mode];
+
     let zoom, pt;
 
-    if(prefetchedRound && prefetchedRound.round === round){
+    if(sharedRounds){
+      // 共有サレタ問題ダカラ、ランダム生成ジャナクテ、コッチヲソノまま使うヨ
+      const r = sharedRounds[round-1];
+      pt = {lat: r[0], lon: r[1], name: '（共有された問題）'};
+      zoom = r[2];
+    } else if(prefetchedRound && prefetchedRound.round === round){
       // 先読み済みダカラ、待たずにソノまま使うヨ
       zoom = prefetchedRound.zoom;
       pt = prefetchedRound.pt;
@@ -909,10 +961,12 @@
       prefetchPromise = null;
     } else {
       // 先読みが間に合ッテなかったパターン、今まで通りココで取得するヨ
+      const range = ZOOM_CONFIG[difficulty][mode];
       zoom = range[0] + Math.floor(Math.random()*(range[1]-range[0]+1));
       pt = await getRoundPoint(mode, zoom);
     }
     actualLatLng = pt;
+    currentZoom = zoom; // シェア用に覚えとくヨ
 
     mainMap.setView([pt.lat, pt.lon], zoom, {animate:false});
     setTimeout(()=>{
@@ -934,6 +988,7 @@
   }
 
   function schedulePrefetch(){
+    if(sharedRounds) return; // 共有問題ダト座標固定済ミダカラ、先読み不要ダヨ
     const nextRoundNum = round + 1;
     if(nextRoundNum > totalRounds) return; // もう次が無いダカラ、先読み不要ダヨ
     const range = ZOOM_CONFIG[difficulty][mode];
@@ -961,12 +1016,12 @@
       totalScore += pts;
     }
 
-    // 結果一覧・Googleマップリンク用ニ、コノラウンドノ記録ヲ残スヨ
+    // 結果一覧・Googleマップリンク・問題共有用ニ、コノラウンドノ記録ヲ残スヨ
     roundHistory.push({
       round,
       actual: {lat: actualLatLng.lat, lon: actualLatLng.lon, name: actualLatLng.name},
       guess: guessLatLng ? {lat: guessLatLng.lat, lon: guessLatLng.lng} : null,
-      dist, pts
+      dist, pts, zoom: currentZoom
     });
 
     $('guessPanel').classList.add('hidden');
@@ -1072,6 +1127,82 @@
   }
 
   // ---------- ラウンド結果一覧（Googleマップリンク付き） ----------
+  // ---------- 共有URL機能 ----------
+  function baseUrl(){
+    return location.origin + location.pathname;
+  }
+
+  // 「同じ問題」を共有スルURL（座標＋ズームを埋め込ムダカラ、開いた人ハ全く同じラウンド出るヨ）
+  function buildQuizShareUrl(){
+    const payload = {
+      v: 1,
+      mode,
+      timeSetting,
+      rounds: roundHistory.map(r => [
+        Math.round(r.actual.lat*10000)/10000,
+        Math.round(r.actual.lon*10000)/10000,
+        r.zoom
+      ])
+    };
+    const b64 = btoa(JSON.stringify(payload));
+    return `${baseUrl()}?quiz=${encodeURIComponent(b64)}`;
+  }
+
+  // 「スコアだけ」共有スルURL（座標ハ入レナイ、結果報告用ダヨ）
+  function buildResultShareUrl(){
+    const avg = Math.round(totalScore / totalRounds);
+    const payload = {v:1, mode, difficulty, cityMode, megaMode, totalRounds, score: totalScore, avg};
+    const b64 = btoa(JSON.stringify(payload));
+    return `${baseUrl()}?result=${encodeURIComponent(b64)}`;
+  }
+
+  function openSharePanel(){
+    $('shareQuizUrlInput').value = buildQuizShareUrl();
+    $('shareScoreUrlInput').value = buildResultShareUrl();
+    $('sharePanel').classList.remove('hidden');
+  }
+
+  async function copyToClipboard(text, statusEl){
+    try{
+      await navigator.clipboard.writeText(text);
+      statusEl.textContent = 'コピーシタヨ！';
+    }catch(e){
+      statusEl.textContent = 'コピー失敗シタヨ、手動デ選択シテネ';
+    }
+    setTimeout(()=>{ statusEl.textContent=''; }, 2500);
+  }
+
+  // ページ読込み時、URLニ共有データガ付イテナイカ確認スルヨ
+  function parseSharedUrlParams(){
+    const params = new URLSearchParams(location.search);
+    if(params.has('quiz')){
+      try{
+        const payload = JSON.parse(atob(decodeURIComponent(params.get('quiz'))));
+        if(payload && payload.v===1 && Array.isArray(payload.rounds) && payload.rounds.length>0){
+          sharedRounds = payload.rounds;
+          sharedMeta = {mode: payload.mode, timeSetting: payload.timeSetting};
+        }
+      }catch(e){ console.warn('共有問題ノ読込ミ失敗シタヨ', e); }
+    }
+    if(params.has('result')){
+      try{
+        sharedResultInfo = JSON.parse(atob(decodeURIComponent(params.get('result'))));
+      }catch(e){ console.warn('共有結果ノ読込ミ失敗シタヨ', e); }
+    }
+  }
+
+  function applySharedBannerToStartPanel(){
+    if(sharedRounds){
+      $('sharedQuizBanner').classList.remove('hidden');
+      $('sharedQuizBannerText').textContent = `🎯 共有サレタ問題ガ届イテルヨ！（${sharedRounds.length}ラウンド）`;
+    }
+    if(sharedResultInfo){
+      $('sharedResultBanner').classList.remove('hidden');
+      const r = sharedResultInfo;
+      $('sharedResultBannerText').textContent = `🏅 共有サレタ結果：${r.score}点（${r.totalRounds}ラウンド、平均${r.avg}点）`;
+    }
+  }
+
   function mapsLink(lat, lon){
     return `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
   }
@@ -1198,11 +1329,23 @@
   // ---------- wiring ----------
   window.addEventListener('load', () => {
     initMaps();
+    parseSharedUrlParams();
+    applySharedBannerToStartPanel();
 
     makeDraggable($('guessPanel'), $('guessPanel').querySelector('.ghead'));
     makeDraggable($('resultPanel'), $('resultPanel').querySelector('.ghead'));
     makeCollapsible($('guessPanel'), $('guessCollapseBtn'), $('guessPanel').querySelector('.ghead'), () => guessMap.invalidateSize());
     makeCollapsible($('resultPanel'), $('resultCollapseBtn'), $('resultPanel').querySelector('.ghead'), () => resultMap.invalidateSize());
+
+    function beginGame(){
+      round = 1; totalScore = 0; roundHistory = [];
+      prefetchedRound = null; prefetchPromise = null;
+      $('startPanel').classList.add('hidden');
+      $('statsBar').classList.remove('hidden');
+      $('styleSwitcher').classList.remove('hidden');
+      setTimeout(()=>{ mainMap.invalidateSize(); guessMap.invalidateSize(); }, 100);
+      startRound();
+    }
 
     $('startBtn').addEventListener('click', () => {
       mode = $('modeSelect').value;
@@ -1212,13 +1355,8 @@
       difficulty = $('difficultySelect').value;
       timeSetting = $('timeSelect').value;
       totalRounds = parseInt($('roundsSelect').value, 10);
-      round = 1; totalScore = 0; roundHistory = [];
-      prefetchedRound = null; prefetchPromise = null;
-      $('startPanel').classList.add('hidden');
-      $('statsBar').classList.remove('hidden');
-      $('styleSwitcher').classList.remove('hidden');
-      setTimeout(()=>{ mainMap.invalidateSize(); guessMap.invalidateSize(); }, 100);
-      startRound();
+      sharedRounds = null; // 通常スタートダカラ、共有問題ノ固定座標ハ使わナイヨ
+      beginGame();
     });
 
     $('guessBtn').addEventListener('click', () => submitGuess(false));
@@ -1231,7 +1369,11 @@
 
     // ---------- ランキング機能の配線 ----------
     if(!rankingEnabled){
-      $('viewRankingFromStartBtn').classList.add('hidden');
+      // 消スンジャナクテ、グレーアウトシテ「準備中」ッテワカルヨウニスルヨ
+      $('viewRankingFromStartBtn').disabled = true;
+      $('viewRankingFromStartBtn').textContent = '🏆 ランキング（準備中ダヨ）';
+      $('viewRankingBtn').disabled = true;
+      $('viewRankingBtn').textContent = '🏆 ランキング（準備中ダヨ）';
     }
     $('viewRankingFromStartBtn').addEventListener('click', () => {
       // スタート画面デハ、今選バレテル設定カラカテゴリ推定スルヨ
@@ -1243,6 +1385,33 @@
     $('closeRankingBtn').addEventListener('click', () => $('rankingPanel').classList.add('hidden'));
     $('viewRoundResultsBtn').addEventListener('click', showRoundResults);
     $('closeRoundResultsBtn').addEventListener('click', () => $('roundResultsPanel').classList.add('hidden'));
+
+    // ---------- 共有機能の配線 ----------
+    $('openShareBtn').addEventListener('click', openSharePanel);
+    $('closeShareBtn').addEventListener('click', () => $('sharePanel').classList.add('hidden'));
+    $('copyQuizUrlBtn').addEventListener('click', () => copyToClipboard($('shareQuizUrlInput').value, $('shareStatus')));
+    $('copyScoreUrlBtn').addEventListener('click', () => copyToClipboard($('shareScoreUrlInput').value, $('shareStatus')));
+
+    $('playSharedQuizBtn').addEventListener('click', () => {
+      // 共有された問題を使うヨ。プルダウンは触らず、直接コノ設定で始めるダケダヨ
+      mode = sharedMeta.mode;
+      timeSetting = sharedMeta.timeSetting;
+      cityMode = false; megaMode = false; // 座標固定済ミダカラ関係ナイヨ
+      difficulty = 'normal';
+      totalRounds = sharedRounds.length;
+      beginGame();
+    });
+    $('matchSharedSettingsBtn').addEventListener('click', () => {
+      // スコア共有ダカラ座標は入ってないヨ。設定だけ同じにするダケダヨ
+      const r = sharedResultInfo;
+      $('modeSelect').value = r.mode;
+      $('difficultySelect').value = r.difficulty;
+      $('citySelect').value = r.megaMode ? 'mega' : (r.cityMode ? 'city' : 'random');
+      const roundsOpt = Array.from($('roundsSelect').options).find(o => o.value === String(r.totalRounds));
+      if(roundsOpt) $('roundsSelect').value = String(r.totalRounds);
+      $('sharedResultBanner').classList.add('hidden');
+    });
+
     $('rankingSubmitBtn').addEventListener('click', submitScore);
   });
 })();
