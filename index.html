@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.46 - ラベル無し地図クイズ／自由パン・地図2種版</title>
+<title>地図ゲッサー v0.48 - ラベル無し地図クイズ／出題範囲そのまま版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -414,7 +414,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.46</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.48</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="timerStat"><span class="val" id="timerVal">--</span><span class="lbl">残り秒</span></div>
@@ -458,7 +458,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.46</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.48</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div id="sharedQuizBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
         <p id="sharedQuizBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
@@ -602,7 +602,7 @@
   "use strict";
 
   // ---------- config ----------
-  const VERSION = '0.46';
+  const VERSION = '0.48';
 
   // ランキング機能ダカラ。使ウナラ、下ノFIREBASE_CONFIGヲ自分ノFirebaseプロジェクトノ値ニ書キ換エルダケデOKダヨ。
   // 書キ換エナカッタラ、ランキング関連ノボタン、自動デ隠レルカラ、ゲーム自体ハ普通ニ遊ベルヨ。
@@ -1069,9 +1069,16 @@
     mainMap.setView([pt.lat, pt.lon], zoom, {animate:false});
     setTimeout(()=>{
       mainMap.invalidateSize();
-      // 難易度ノ核ハ「最初ニドコマデズームインシテ見セルカ」ダカラ、ソコダケ制限スルヨ。
-      // 動カセル範囲自体ハ縛ラナイ（スナップバック起コサナイヨウニ、枠デノ押シ戻シハヤメタダカラ）
       mainMap.setMinZoom(zoom);
+      // 動カセル範囲ハ、最初カラ決マッテル「出題範囲」ソノまま（広ゲナイ）ダヨ。
+      // 画面ノ形（すまほノ縦長トカ）デ最初収マラナイ部分ハ、動カセバ見レルヨウニナルダケダヨ
+      const {degLat, degLon} = estimateHalfExtentDeg(zoom, pt.lat);
+      const revealBounds = L.latLngBounds(
+        [pt.lat - degLat, pt.lon - degLon],
+        [pt.lat + degLat, pt.lon + degLon]
+      );
+      mainMap.options.maxBoundsViscosity = 1.0;
+      mainMap.setMaxBounds(revealBounds);
     }, 60);
 
     $('loadingPanel').style.display = 'none';
