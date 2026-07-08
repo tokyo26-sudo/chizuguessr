@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.45 - ラベル無し地図クイズ／スナップバック解除版</title>
+<title>地図ゲッサー v0.46 - ラベル無し地図クイズ／自由パン・地図2種版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -414,7 +414,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.45</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.46</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="timerStat"><span class="val" id="timerVal">--</span><span class="lbl">残り秒</span></div>
@@ -428,9 +428,7 @@
   <div id="styleSwitcher" class="hidden">
     <div class="swLabel">地図パターン</div>
     <button class="swBtn" data-style="voyager">① 標準（色つき）</button>
-    <button class="swBtn" data-style="dark">② ダーク</button>
-    <button class="swBtn" data-style="satellite">③ 衛星写真</button>
-    <button class="swBtn" data-style="terrain">④ 地形（陰影起伏）</button>
+    <button class="swBtn" data-style="satellite">② 航空写真</button>
   </div>
 
   <div id="loadingPanel">
@@ -460,7 +458,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.45</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.46</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div id="sharedQuizBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
         <p id="sharedQuizBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
@@ -604,7 +602,7 @@
   "use strict";
 
   // ---------- config ----------
-  const VERSION = '0.45';
+  const VERSION = '0.46';
 
   // ランキング機能ダカラ。使ウナラ、下ノFIREBASE_CONFIGヲ自分ノFirebaseプロジェクトノ値ニ書キ換エルダケデOKダヨ。
   // 書キ換エナカッタラ、ランキング関連ノボタン、自動デ隠レルカラ、ゲーム自体ハ普通ニ遊ベルヨ。
@@ -638,9 +636,7 @@
   // メイン（問題）地図で切り替えられるパターン。ラベル入りタイルは絶対に使わないヨ（地名バレ防止ダカラ）
   const MAP_STYLES = {
     voyager:   { url:'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', subdomains:'abcd', maxZoom:18, attribution:CARTO_ATTR },
-    dark:      { url:'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', subdomains:'abcd', maxZoom:18, attribution:CARTO_ATTR },
-    satellite: { url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', subdomains:'', maxZoom:18, attribution:ESRI_ATTR },
-    terrain:   { url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}', subdomains:'', maxZoom:18, maxNativeZoom:8, attribution:'Esri' }
+    satellite: { url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', subdomains:'', maxZoom:18, attribution:ESRI_ATTR }
   };
 
   // 都市モード用データ（GeoNamesベース、[緯度,経度,表示名,国コード]の配列ダカラ）
@@ -947,7 +943,7 @@
   // ---------- map init ----------
   function initMaps(){
     // 枠、目安トシテハ残スケド、「戻す動き」自体ハ完全ニ無クスヨ（0ニスルト抵抗・押シ戻シ、両方ナクナルダカラ）
-    mainMap = L.map('mainMap', {zoomControl:true, worldCopyJump:false, maxBoundsViscosity:0, inertia:false}).setView([20,0],2);
+    mainMap = L.map('mainMap', {zoomControl:true, worldCopyJump:false}).setView([20,0],2);
     setMapStyle('voyager');
     L.control.scale({position:'topleft', metric:true, imperial:false, maxWidth:150}).addTo(mainMap);
 
@@ -1009,7 +1005,6 @@
     $('guessCollapseBtn').title = '折りたたむ';
 
     $('loadingPanel').style.display = 'flex';
-    mainMap.setMaxBounds(null);
     mainMap.setMinZoom(0);
     $('guessBtn').disabled = true;
     $('guessCoord').textContent = 'まだピンが立ってないヨ';
@@ -1074,15 +1069,9 @@
     mainMap.setView([pt.lat, pt.lon], zoom, {animate:false});
     setTimeout(()=>{
       mainMap.invalidateSize();
-      // 「動ケル範囲」ハ画面ノ形（細長イ・横広イ）ニ関係ナク、決マッタ広サニ固定スルヨ。
-      // 細長イすまほ画面デ最初ハ切レテ見エテモ、指デ動カセバ同ジ範囲、全部見レルヨウニナルダカラ
+      // 難易度ノ核ハ「最初ニドコマデズームインシテ見セルカ」ダカラ、ソコダケ制限スルヨ。
+      // 動カセル範囲自体ハ縛ラナイ（スナップバック起コサナイヨウニ、枠デノ押シ戻シハヤメタダカラ）
       mainMap.setMinZoom(zoom);
-      const {degLat, degLon} = estimateHalfExtentDeg(zoom, pt.lat);
-      const revealBounds = L.latLngBounds(
-        [pt.lat - degLat, pt.lon - degLon],
-        [pt.lat + degLat, pt.lon + degLon]
-      );
-      mainMap.setMaxBounds(revealBounds);
     }, 60);
 
     $('loadingPanel').style.display = 'none';
