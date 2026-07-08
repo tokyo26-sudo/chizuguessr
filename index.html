@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.50 - ラベル無し地図クイズ／経度正規化修正版</title>
+<title>地図ゲッサー v0.51 - ラベル無し地図クイズ／開発用プレビュー版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -146,7 +146,7 @@
   #mainMap.blurred{ filter: sepia(8%) saturate(0.9) blur(2px) brightness(0.7); }
 
   /* ---------- Start overlay ---------- */
-  #startPanel, #finalPanel, #rankingPanel, #roundResultsPanel, #sharePanel, #progressMapPanel{
+  #startPanel, #finalPanel, #rankingPanel, #roundResultsPanel, #sharePanel, #progressMapPanel, #devPreviewPanel{
     position:absolute; inset:0; z-index:2000;
     display:flex; align-items:center; justify-content:center;
     background: radial-gradient(circle at 50% 40%, rgba(27,42,65,0.92), rgba(10,16,26,0.97));
@@ -414,7 +414,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.50</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.51</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="timerStat"><span class="val" id="timerVal">--</span><span class="lbl">残り秒</span></div>
@@ -458,7 +458,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.50</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.51</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div id="sharedQuizBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
         <p id="sharedQuizBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
@@ -517,6 +517,7 @@
       <button class="btn brass" id="startBtn">スタートするヨ</button>
       <button class="btn" id="viewRankingFromStartBtn" style="margin-top:8px;">🏆 ランキングを見る</button>
       <button type="button" class="btn" id="viewStatusBtn" style="margin-top:8px;">📊 ステータス（経験値・解放地域）</button>
+      <button type="button" class="btn" id="viewDevPreviewBtn" style="margin-top:8px; opacity:0.7; font-size:12px;">🧪 開発用：サンプル問題プレビュー</button>
     </div>
   </div>
 
@@ -583,6 +584,27 @@
     </div>
   </div>
 
+  <div id="devPreviewPanel" class="hidden">
+    <div class="card" style="max-width:640px; width:94%; max-height:90vh; overflow-y:auto;">
+      <h2>🧪 サンプル問題プレビュー（開発用ダヨ）</h2>
+      <p style="font-size:13px; margin:0 0 10px 0;">今ノ設定（出題エリア・出題スタイル・難易度）デ、座標ヲマトメテ生成シテ、地図ニ表示スルヨ。日本モード・地域モードハ、国確認ノ通信ガ入ルカラ、少シ時間カカルコトアルヨ。</p>
+      <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
+        <label style="font-size:13px;">生成数</label>
+        <select id="devPreviewCount" style="width:auto; padding:4px 8px;">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="30">30</option>
+          <option value="50">50</option>
+        </select>
+        <button type="button" class="btn" id="runDevPreviewBtn" style="width:auto; margin:0; padding:8px 16px;">生成スル</button>
+      </div>
+      <div id="devPreviewStatus" style="font-size:13px; min-height:1em; margin-bottom:8px;"></div>
+      <div id="devPreviewMapEl" style="width:100%; height:320px; border-radius:6px; overflow:hidden; margin-bottom:10px;"></div>
+      <div id="devPreviewList" style="font-size:12px; max-height:200px; overflow-y:auto; padding:8px; border:1px solid rgba(168,130,63,0.3); border-radius:6px;"></div>
+      <button class="btn brass" id="closeDevPreviewBtn" style="margin-top:10px;">閉じる</button>
+    </div>
+  </div>
+
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -602,7 +624,7 @@
   "use strict";
 
   // ---------- config ----------
-  const VERSION = '0.50';
+  const VERSION = '0.51';
 
   // ランキング機能ダカラ。使ウナラ、下ノFIREBASE_CONFIGヲ自分ノFirebaseプロジェクトノ値ニ書キ換エルダケデOKダヨ。
   // 書キ換エナカッタラ、ランキング関連ノボタン、自動デ隠レルカラ、ゲーム自体ハ普通ニ遊ベルヨ。
@@ -1493,6 +1515,85 @@
     });
   }
 
+  // ---------- 開発用：サンプル問題プレビュー ----------
+  let devPreviewMap = null;
+  async function runDevPreview(){
+    const btn = $('runDevPreviewBtn');
+    btn.disabled = true;
+
+    // 今ノ設定、いったん退避サセテカラ、プレビュー用ノ設定ニ切替エルヨ（生成後、必ズ元ニ戻スダカラ）
+    const prevMode = mode, prevCityMode = cityMode, prevMegaMode = megaMode, prevDifficulty = difficulty, prevSelectedRegions = selectedRegions;
+
+    mode = $('modeSelect').value;
+    const styleVal = $('citySelect').value;
+    cityMode = styleVal !== 'random';
+    megaMode = styleVal === 'mega';
+    difficulty = $('difficultySelect').value;
+
+    if(mode === 'region'){
+      selectedRegions = Array.from(document.querySelectorAll('.regionCheckbox:checked')).map(el => el.value);
+      if(selectedRegions.length === 0){
+        $('devPreviewStatus').textContent = '地域モードダカラ、マズ地域選ンデネ！';
+        mode=prevMode; cityMode=prevCityMode; megaMode=prevMegaMode; difficulty=prevDifficulty; selectedRegions=prevSelectedRegions;
+        btn.disabled = false;
+        return;
+      }
+    }
+    if(difficulty === 'hard' && cityMode) await ensureHardCityData();
+
+    const count = parseInt($('devPreviewCount').value, 10);
+    const range = ZOOM_CONFIG[difficulty][mode==='japan' ? 'japan' : 'world'];
+    const results = [];
+
+    for(let i=0;i<count;i++){
+      $('devPreviewStatus').textContent = `生成中...（${i+1}/${count}）`;
+      const zoom = range[0] + Math.floor(Math.random()*(range[1]-range[0]+1));
+      let pt;
+      if(cityMode){
+        pt = getRandomCityPoint(mode);
+      } else {
+        pt = await getRandomPoint(mode, zoom);
+      }
+      results.push(pt);
+    }
+
+    // 設定、元ニ戻スヨ
+    mode=prevMode; cityMode=prevCityMode; megaMode=prevMegaMode; difficulty=prevDifficulty; selectedRegions=prevSelectedRegions;
+
+    $('devPreviewStatus').textContent = `${results.length}件、生成完了ダヨ`;
+    renderDevPreview(results);
+    btn.disabled = false;
+  }
+
+  function renderDevPreview(results){
+    if(!devPreviewMap){
+      devPreviewMap = L.map('devPreviewMapEl', {zoomControl:true, worldCopyJump:false}).setView([20,0],2);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', {
+        subdomains:'abcd', maxZoom:18, attribution:''
+      }).addTo(devPreviewMap);
+    }
+    waitForMapSize(devPreviewMap, () => {
+      devPreviewMap.invalidateSize();
+      if(devPreviewMap._markers) devPreviewMap._markers.forEach(m => devPreviewMap.removeLayer(m));
+      devPreviewMap._markers = [];
+      const latlngs = [];
+      results.forEach((pt, i) => {
+        const m = L.circleMarker([pt.lat, pt.lon], {radius:6, color:'#a8324a', fillColor:'#a8324a', fillOpacity:0.8, weight:1}).addTo(devPreviewMap);
+        m.bindTooltip(`#${i+1}${pt.name ? ' ' + pt.name : ''}`, {sticky:true});
+        devPreviewMap._markers.push(m);
+        latlngs.push([pt.lat, pt.lon]);
+      });
+      if(latlngs.length > 0){
+        devPreviewMap.fitBounds(L.latLngBounds(latlngs), {padding:[20,20], maxZoom:6});
+      }
+    });
+
+    $('devPreviewList').innerHTML = results.map((pt, i) =>
+      `<div style="padding:3px 0; border-bottom:1px solid rgba(168,130,63,0.2);">#${i+1}: ${pt.lat.toFixed(2)}, ${pt.lon.toFixed(2)}${pt.name ? ' — ' + pt.name : ''}</div>`
+    ).join('');
+  }
+
+
   function showProgressMap(){
     $('progressMapPanel').classList.remove('hidden');
     $('progressMapSummary').textContent = `経験値：${totalXP}点／解放済ミ：${unlockedRegions.size}/${REGION_ORDER.length}地域ダヨ`;
@@ -1735,6 +1836,9 @@
     $('closeShareBtn').addEventListener('click', () => $('sharePanel').classList.add('hidden'));
     $('viewStatusBtn').addEventListener('click', showProgressMap);
     $('closeProgressMapBtn').addEventListener('click', () => $('progressMapPanel').classList.add('hidden'));
+    $('viewDevPreviewBtn').addEventListener('click', () => $('devPreviewPanel').classList.remove('hidden'));
+    $('closeDevPreviewBtn').addEventListener('click', () => $('devPreviewPanel').classList.add('hidden'));
+    $('runDevPreviewBtn').addEventListener('click', runDevPreview);
     $('copyQuizUrlBtn').addEventListener('click', () => copyToClipboard($('shareQuizUrlInput').value, $('shareStatus')));
     $('copyScoreUrlBtn').addEventListener('click', () => copyToClipboard($('shareScoreUrlInput').value, $('shareStatus')));
 
