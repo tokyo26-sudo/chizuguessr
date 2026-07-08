@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ズームプレビュー確認ツール（開発用）</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<style>
+  :root{
+    --ink:#2b2b2b;
+    --paper:#f7f5f1;
+    --line:#d8d3c8;
+    --accent:#a8324a;
+    --accent-soft:#e7cdd2;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:'Segoe UI', 'Hiragino Sans', sans-serif;
+    background:var(--paper); color:var(--ink);
+  }
+  header{
+    padding:14px 18px; border-bottom:2px solid var(--line);
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  }
+  header h1{ font-size:16px; margin:0 12px 0 0; white-space:nowrap; }
+  .field{ display:flex; flex-direction:column; gap:2px; }
+  .field label{ font-size:11px; color:#6b6b6b; }
+  select, button{
+    font-size:14px; padding:6px 10px; border-radius:6px;
+    border:1px solid var(--line); background:#fff; color:var(--ink);
+  }
+  button{ cursor:pointer; background:var(--accent); color:#fff; border:none; }
+  button:hover{ opacity:0.85; }
+  button.secondary{ background:#fff; color:var(--ink); border:1px solid var(--line); }
+  .zoomBox{ display:flex; align-items:center; gap:8px; }
+  input[type=range]{ width:160px; }
+  .readout{
+    font-size:13px; background:#fff; border:1px solid var(--line);
+    border-radius:6px; padding:6px 12px; line-height:1.5; min-width:220px;
+  }
+  .readout b{ color:var(--accent); }
+  #mapEl{ width:100%; height:calc(100vh - 66px); }
+  .hint{
+    position:absolute; z-index:1000; top:78px; left:50%; transform:translateX(-50%);
+    background:rgba(255,255,255,0.92); border:1px solid var(--line); border-radius:8px;
+    padding:8px 16px; font-size:13px; box-shadow:0 2px 6px rgba(0,0,0,0.1);
+    pointer-events:none;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🔍 ズームプレビュー確認ツール</h1>
+
+  <div class="field">
+    <label>出題エリア</label>
+    <select id="modeSel">
+      <option value="world">世界</option>
+      <option value="japan">日本</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label>難易度</label>
+    <select id="diffSel">
+      <option value="easy">かんたん</option>
+      <option value="normal" selected>ふつう</option>
+      <option value="hard">むずかしい</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label>ズーム（範囲内で調整）</label>
+    <div class="zoomBox">
+      <input type="range" id="zoomSlider" min="9" max="11" value="9" step="1"/>
+      <span id="zoomVal">9</span>
+    </div>
+  </div>
+
+  <div class="readout" id="readout">
+    地図をクリックして地点を選んでください
+  </div>
+
+  <button class="secondary" id="resetBtn">地点を選び直す（世界図に戻る）</button>
+</header>
+
+<div id="mapEl"></div>
+<div class="hint" id="hint">👆 地図をクリックして地点を選んでください</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+  // 本体（map_guess_game）と同じ設定をココにも置いてるダヨ。
+  // 本体のZOOM_CONFIGを変えたら、ココも合わせて変えてクダサイネ。
+  const ZOOM_CONFIG = {
+    easy:   { world:[4,5],  japan:[6,7]  },
+    normal: { world:[6,9],  japan:[9,11] },
+    hard:   { world:[9,11], japan:[12,13] }
+  };
+
+  const CARTO_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+  const TILE_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png';
+
+  // 本体のestimateHalfExtentDegForBoundsと全く同じ計算式ダヨ（1800px幅想定）
+  function estimateHalfExtentDegForBounds(zoom, lat){
+    const metersPerPixel = 156543.03392 * Math.cos(lat*Math.PI/180) / Math.pow(2, zoom);
+    const halfWidthMeters = metersPerPixel * 900; // 1800px幅の半分ダヨ
+    const degLat = halfWidthMeters / 111320;
+    const cosLat = Math.max(0.15, Math.cos(lat*Math.PI/180));
+    const degLon = degLat / cosLat;
+    return {degLat, degLon};
+  }
+
+  const map = L.map('mapEl', {worldCopyJump:false}).setView([20, 10], 2);
+  const tileLayer = L.tileLayer(TILE_URL, {subdomains:'abcd', maxZoom:18, attribution:CARTO_ATTR}).addTo(map);
+
+  let scaleControl = null;
+  let clickedPoint = null;
+  let pickMode = true; // true: 地点選択待ち／false: プレビュー中（動かせる範囲を制限中）
+
+  const modeSel = document.getElementById('modeSel');
+  const diffSel = document.getElementById('diffSel');
+  const zoomSlider = document.getElementById('zoomSlider');
+  const zoomVal = document.getElementById('zoomVal');
+  const readout = document.getElementById('readout');
+  const hint = document.getElementById('hint');
+  const resetBtn = document.getElementById('resetBtn');
+
+  function currentRange(){
+    return ZOOM_CONFIG[diffSel.value][modeSel.value];
+  }
+
+  function syncSliderRange(){
+    const [lo, hi] = currentRange();
+    zoomSlider.min = lo;
+    zoomSlider.max = hi;
+    if(Number(zoomSlider.value) < lo) zoomSlider.value = lo;
+    if(Number(zoomSlider.value) > hi) zoomSlider.value = hi;
+    zoomVal.textContent = zoomSlider.value;
+  }
+
+  function updateReadout(){
+    const [lo, hi] = currentRange();
+    const z = Number(zoomSlider.value);
+    if(!clickedPoint){
+      readout.innerHTML = `設定中の範囲：ズーム <b>${lo}〜${hi}</b>（地点クリックで反映）`;
+      return;
+    }
+    readout.innerHTML =
+      `地点：${clickedPoint.lat.toFixed(3)}, ${clickedPoint.lng.toFixed(3)}<br>` +
+      `ズーム：<b>${z}</b>（このモード・難易度の範囲：${lo}〜${hi}）`;
+  }
+
+  function applyPreview(){
+    if(!clickedPoint) return;
+    const z = Number(zoomSlider.value);
+    map.setView([clickedPoint.lat, clickedPoint.lng], z, {animate:false});
+    setTimeout(()=>{
+      map.invalidateSize();
+      map.setMinZoom(z);
+      const {degLat, degLon} = estimateHalfExtentDegForBounds(z, clickedPoint.lat);
+      const bounds = L.latLngBounds(
+        [clickedPoint.lat - degLat, clickedPoint.lng - degLon],
+        [clickedPoint.lat + degLat, clickedPoint.lng + degLon]
+      );
+      map.options.maxBoundsViscosity = 1.0;
+      map.setMaxBounds(bounds);
+
+      if(scaleControl) map.removeControl(scaleControl);
+      scaleControl = L.control.scale({metric:true, imperial:false, maxWidth:120}).addTo(map);
+    }, 60);
+    updateReadout();
+  }
+
+  map.on('click', (e) => {
+    if(!pickMode) return; // プレビュー中はクリック無効（動かせる範囲だけ動かす）
+    clickedPoint = e.latlng;
+    pickMode = false;
+    hint.style.display = 'none';
+    applyPreview();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    pickMode = true;
+    clickedPoint = null;
+    map.setMaxBounds(null);
+    map.options.maxBoundsViscosity = 0;
+    map.setMinZoom(1);
+    if(scaleControl){ map.removeControl(scaleControl); scaleControl = null; }
+    map.setView([20, 10], 2, {animate:false});
+    hint.style.display = 'block';
+    updateReadout();
+  });
+
+  modeSel.addEventListener('change', () => { syncSliderRange(); applyPreview(); updateReadout(); });
+  diffSel.addEventListener('change', () => { syncSliderRange(); applyPreview(); updateReadout(); });
+  zoomSlider.addEventListener('input', () => { zoomVal.textContent = zoomSlider.value; applyPreview(); });
+
+  syncSliderRange();
+  updateReadout();
+</script>
+
+</body>
+</html>
