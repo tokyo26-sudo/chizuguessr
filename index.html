@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.52 - ラベル無し地図クイズ／国別判定オフライン化版</title>
+<title>地図ゲッサー v0.53 - ラベル無し地図クイズ／国別判定オフライン化版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -458,7 +458,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.52</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.53</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div id="sharedQuizBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
         <p id="sharedQuizBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
@@ -948,12 +948,25 @@
     usedCityKeys.add(key);
     if(mode==='world') usedCountries.add(c[3]);
 
-    // ちょっとだけ揺らして毎回同じ点にならないようにするヨ（だいたい±2km程度ダカラ）。
+    // 揺らし半径（km単位）。モードによって変えるヨ：
+    // ・世界の大都市モード（人口50万人以上ダケ）→ 都市どうし間隔広いカラ、思いッきり100km
+    // ・日本の大都市モード（実ハ全市町村ダカラ隣が近イ）→ 控エめに20km
+    // ・通常の都市モード（世界／日本とも小さい町も入ってる）→ ちょっとだけ広げて6km
+    let jitterHalfWidthKm;
+    if(megaMode){
+      jitterHalfWidthKm = (mode === 'japan') ? 20 : 100;
+    } else {
+      jitterHalfWidthKm = 6;
+    }
+    // 緯度によって経度1度あたりのkmが変わるカラ、換算しとくヨ（極に近いトコで割り算爆発しないヨウ下限つけるダカラ）
+    const kmPerDegLat = 111;
+    const kmPerDegLon = 111 * Math.max(Math.cos(c[0]*Math.PI/180), 0.15);
+
     // 揺らした先が海だったら、揺らし幅を狭めながら何回か引き直すヨ（陸地マスクで一瞬判定ダカラ、通信要らないヨ）
     for(let i=0;i<6;i++){
       const shrink = 1 - i*0.15; // 引き直すたびに揺れ幅を狭くしていくダカラ
-      const jitterLat = (Math.random()-0.5)*0.03*shrink;
-      const jitterLon = (Math.random()-0.5)*0.03*shrink;
+      const jitterLat = (Math.random()-0.5)*2 * (jitterHalfWidthKm/kmPerDegLat) * shrink;
+      const jitterLon = (Math.random()-0.5)*2 * (jitterHalfWidthKm/kmPerDegLon) * shrink;
       const lat = c[0]+jitterLat, lon = c[1]+jitterLon;
       if(isLandAt(lat, lon)) return {lat, lon, name: c[2]};
     }
