@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.40 - ラベル無し地図クイズ／画面スクロール対応版</title>
+<title>地図ゲッサー v0.41 - ラベル無し地図クイズ／枠線ズレ修正・診断表示版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -178,14 +178,8 @@
     max-height:90vh; overflow-y:auto; /* 窓ガ小サクテモ、中身スクロールシテボタンニ届クヨウニスルダカラ */
     box-shadow: 0 20px 60px var(--shadow);
     border:1px solid var(--brass);
+    outline: 1px dashed var(--brass-light); outline-offset: -9px; /* 点線ハoutlineニシテ、スクロールシテモズレナイヨウニするヨ */
     position:relative;
-  }
-  .card::before{
-    content:"";
-    position:absolute; inset:8px;
-    border:1px dashed var(--brass-light);
-    border-radius:3px;
-    pointer-events:none;
   }
   .card h2{
     font-family:'Spectral',serif; font-size:26px; margin:0 0 6px;
@@ -420,7 +414,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.40</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.41</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="timerStat"><span class="val" id="timerVal">--</span><span class="lbl">残り秒</span></div>
@@ -466,7 +460,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.40</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.41</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div id="sharedQuizBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
         <p id="sharedQuizBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
@@ -610,7 +604,7 @@
   "use strict";
 
   // ---------- config ----------
-  const VERSION = '0.40';
+  const VERSION = '0.41';
 
   // ランキング機能ダカラ。使ウナラ、下ノFIREBASE_CONFIGヲ自分ノFirebaseプロジェクトノ値ニ書キ換エルダケデOKダヨ。
   // 書キ換エナカッタラ、ランキング関連ノボタン、自動デ隠レルカラ、ゲーム自体ハ普通ニ遊ベルヨ。
@@ -1500,6 +1494,7 @@
       }catch(e){
         console.warn('国境ポリゴン読込ミ失敗シタヨ、四角表示ニ切替エルネ', e);
         drawRegionRectangles();
+        $('progressMapSummary').textContent += `（簡易表示中：${e.message || e}）`;
       }
     });
   }
