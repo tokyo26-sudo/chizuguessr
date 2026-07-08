@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.49 - ラベル無し地図クイズ／可動範囲計算修正版</title>
+<title>地図ゲッサー v0.50 - ラベル無し地図クイズ／経度正規化修正版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -414,7 +414,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.49</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.50</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="timerStat"><span class="val" id="timerVal">--</span><span class="lbl">残り秒</span></div>
@@ -458,7 +458,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.49</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.50</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div id="sharedQuizBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
         <p id="sharedQuizBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
@@ -602,7 +602,7 @@
   "use strict";
 
   // ---------- config ----------
-  const VERSION = '0.49';
+  const VERSION = '0.50';
 
   // ランキング機能ダカラ。使ウナラ、下ノFIREBASE_CONFIGヲ自分ノFirebaseプロジェクトノ値ニ書キ換エルダケデOKダヨ。
   // 書キ換エナカッタラ、ランキング関連ノボタン、自動デ隠レルカラ、ゲーム自体ハ普通ニ遊ベルヨ。
@@ -971,10 +971,13 @@
   }
 
   function onGuessClick(e){
-    guessLatLng = e.latlng;
+    // 経度、-180〜180度ノ範囲ニ正規化スルヨ（回答マップ、世界ガ横ニ繰リ返ス設定ダカラ、
+    // 二枚目・三枚目ノ地図クリックスルト、経度ガ180度超エチャウ。ソレダト距離計算ガ狂ウカラ、ココデ揃エルヨ）
+    const normalizedLatLng = L.latLng(e.latlng.lat, ((e.latlng.lng + 180) % 360 + 360) % 360 - 180);
+    guessLatLng = normalizedLatLng;
     if(guessMarker) guessMap.removeLayer(guessMarker);
     guessMarker = L.circleMarker(e.latlng, {radius:7, color:'#a8324a', fillColor:'#a8324a', fillOpacity:0.9, weight:2}).addTo(guessMap);
-    $('guessCoord').textContent = `緯度 ${e.latlng.lat.toFixed(2)}, 経度 ${e.latlng.lng.toFixed(2)}`;
+    $('guessCoord').textContent = `緯度 ${normalizedLatLng.lat.toFixed(2)}, 経度 ${normalizedLatLng.lng.toFixed(2)}`;
     $('guessBtn').disabled = false;
   }
 
