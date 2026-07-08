@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.51 - ラベル無し地図クイズ／開発用プレビュー版</title>
+<title>地図ゲッサー v0.52 - ラベル無し地図クイズ／国別判定オフライン化版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -414,7 +414,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.51</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.52</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="timerStat"><span class="val" id="timerVal">--</span><span class="lbl">残り秒</span></div>
@@ -458,7 +458,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.51</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.52</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div id="sharedQuizBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
         <p id="sharedQuizBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
@@ -587,7 +587,7 @@
   <div id="devPreviewPanel" class="hidden">
     <div class="card" style="max-width:640px; width:94%; max-height:90vh; overflow-y:auto;">
       <h2>🧪 サンプル問題プレビュー（開発用ダヨ）</h2>
-      <p style="font-size:13px; margin:0 0 10px 0;">今ノ設定（出題エリア・出題スタイル・難易度）デ、座標ヲマトメテ生成シテ、地図ニ表示スルヨ。日本モード・地域モードハ、国確認ノ通信ガ入ルカラ、少シ時間カカルコトアルヨ。</p>
+      <p style="font-size:13px; margin:0 0 10px 0;">今ノ設定（出題エリア・出題スタイル・難易度）デ、座標ヲマトメテ生成シテ、地図ニ表示スルヨ。国判定モ通信不要ニナッタカラ、速イハズダヨ。</p>
       <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
         <label style="font-size:13px;">生成数</label>
         <select id="devPreviewCount" style="width:auto; padding:4px 8px;">
@@ -619,12 +619,14 @@
 <script src="landmask_data.js"></script>
 <!-- 地域選択モード用データダカラ -->
 <script src="regions_data.js"></script>
+<!-- 国別判定用データダカラ（通信不要デ「ドノ国カ」判定デキルヨウニナルヨ） -->
+<script src="country_mask_data.js"></script>
 <script>
 (function(){
   "use strict";
 
   // ---------- config ----------
-  const VERSION = '0.51';
+  const VERSION = '0.52';
 
   // ランキング機能ダカラ。使ウナラ、下ノFIREBASE_CONFIGヲ自分ノFirebaseプロジェクトノ値ニ書キ換エルダケデOKダヨ。
   // 書キ換エナカッタラ、ランキング関連ノボタン、自動デ隠レルカラ、ゲーム自体ハ普通ニ遊ベルヨ。
@@ -705,6 +707,7 @@
   let sharedRounds=null, sharedMeta=null; // 共有された「問題」を受け取った時ダケ入るヨ
   let sharedResultInfo=null; // 共有された「スコア」を受け取った時ダケ入るヨ
   let usedCityKeys=new Set(); // 同ジゲーム内デ、モウ出タ都市ヲ覚エテオク（重複避ケル用ダヨ）
+  let usedCountries=new Set(); // 同ジゲーム内デ、モウ出タ国ヲ覚エテオク（同ジ国連続避ケル用ダヨ）
 
   const $ = id => document.getElementById(id);
   const isMobile = () => window.matchMedia('(max-width: 640px)').matches;
@@ -810,6 +813,27 @@
     return cur === 1;
   }
 
+  // 国別マスクカラ、コノ座標ガドノ国カ判定スルヨ（通信不要・一瞬ダカラ、Nominatim要ラナクナルヨ）
+  function countryAt(lat, lon){
+    if(typeof COUNTRY_MASK_ROWS === 'undefined') return null; // 万一データ未読込ミナラ、判定不能扱イダヨ
+    let la = Math.max(-89.999, Math.min(90, lat));
+    let lo = ((lon + 180) % 360 + 360) % 360 - 180;
+    let col = Math.floor((lo + 180) / 360 * COUNTRY_MASK_WIDTH);
+    let row = Math.floor((90 - la) / 180 * COUNTRY_MASK_HEIGHT);
+    col = Math.max(0, Math.min(COUNTRY_MASK_WIDTH - 1, col));
+    row = Math.max(0, Math.min(COUNTRY_MASK_HEIGHT - 1, row));
+    const runs = COUNTRY_MASK_ROWS[row];
+    let pos = 0;
+    for(let i=0;i<runs.length;i+=2){
+      pos += runs[i+1];
+      if(col < pos){
+        const val = runs[i];
+        return val === 0 ? null : COUNTRY_MASK_LIST[val-1];
+      }
+    }
+    return null;
+  }
+
   // 地域選択モード：選バレタ地域ノ範囲内デ座標ヲ引クヨ（日付変更線マタグ地域モ対応スルダカラ）
   function sampleLatLonInRegion(regionKey){
     const b = REGION_BOUNDS[regionKey]; // [minLat, minLon, maxLat, maxLon]
@@ -852,28 +876,22 @@
         continue; // 隅が海 -> 表示範囲の大半が海の可能性高いカラ、引き直すヨ
       }
 
+      // ③国別マスクデ、ドノ国カ判定スルヨ（コッチも通信不要・一瞬ダヨ）
+      const country = countryAt(lat, lon);
+
       if(mode === 'japan'){
-        // 日本モードのときダケ、本当に日本かNominatimで確認するヨ（陸地なのは確定済みダカラ、コレは国境チェック専用ダヨ）
-        const geo = await reverseGeocode(lat, lon);
-        if(geo === null){
-          return {lat, lon, name: '（日本のどこか）'}; // 通信エラー -> 陸地なのは確実だからこのまま採用スルヨ
-        }
-        if(geo === false || geo.countryCode !== 'jp'){
-          continue; // 他国の陸地だったら引き直すヨ（北方領土・対馬海峡の向こう側とか対策ダカラ）
-        }
-        return {lat, lon, name: geo.name};
+        if(country !== 'JP') continue; // 日本ジャナカッタラ引キ直スヨ（北方領土・対馬海峡ノ向コウ側トカ対策ダカラ）
+        return {lat, lon, name: '（日本のどこか）'};
       }
       if(mode === 'region' && selectedRegions.length > 0){
         // 地域選択モードダカラ、選バレタ地域ノ国ニ本当ニ入ッテルカ確認スルヨ（バウンディングボックスハ隣国モ含ムカラ）
-        const geo = await reverseGeocode(lat, lon);
-        if(geo === null){
-          return {lat, lon, name: '（選んだ地域のどこか）'};
-        }
-        if(geo === false) continue;
-        const geoRegion = COUNTRY_TO_REGION[(geo.countryCode||'').toUpperCase()];
-        if(!selectedRegions.includes(geoRegion)) continue;
-        return {lat, lon, name: geo.name};
+        const geoRegion = country ? COUNTRY_TO_REGION[country] : null;
+        if(!geoRegion || !selectedRegions.includes(geoRegion)) continue;
+        return {lat, lon, name: '（選んだ地域のどこか）'};
       }
+      // 通常（世界）モードダケ、同ジ国連続シテ出ナイヨウ避ケルヨ（１国シカ無イ地域トカハ避ケル対象外ダカラ）
+      if(country && usedCountries.has(country)) continue;
+      if(country) usedCountries.add(country);
       return {lat, lon, name: '（陸地）'};
     }
     const pool = mode==='japan' ? FALLBACK_JAPAN : FALLBACK_WORLD;
@@ -916,14 +934,19 @@
       const filtered = pool.filter(c => selectedRegions.includes(COUNTRY_TO_REGION[c[3]]));
       if(filtered.length > 0) pool = filtered; // 該当ナシナラ、元ノ世界プールノまま使うヨ（安全策ダカラ）
     }
-    // 同ジ都市、二回出ナイヨウ、モウ使ッタ都市ハ避ケルヨ（プール全部使イ切ッタラ、諦メテ重複許ストコロダケ例外ダヨ）
+    // 同ジ都市、二回出ナイヨウ、モウ使ッタ都市ハ避ケルヨ（プール全部使イ切ッタラ、諦メテ重複許ストコロダケ例外ダヨ）。
+    // 世界モードダケ、同ジ国、連続シテ出ナイヨウモ避ケルヨ（日本モード・地域モードハ対象外ダカラ）
     let c, key, tries = 0;
     do{
       c = pool[Math.floor(Math.random()*pool.length)];
       key = c[0] + ',' + c[1];
       tries++;
-    } while(usedCityKeys.has(key) && tries < 50 && usedCityKeys.size < pool.length);
+    } while(
+      (usedCityKeys.has(key) || (mode==='world' && usedCountries.has(c[3])))
+      && tries < 50 && usedCityKeys.size < pool.length
+    );
     usedCityKeys.add(key);
+    if(mode==='world') usedCountries.add(c[3]);
 
     // ちょっとだけ揺らして毎回同じ点にならないようにするヨ（だいたい±2km程度ダカラ）。
     // 揺らした先が海だったら、揺らし幅を狭めながら何回か引き直すヨ（陸地マスクで一瞬判定ダカラ、通信要らないヨ）
@@ -1523,6 +1546,8 @@
 
     // 今ノ設定、いったん退避サセテカラ、プレビュー用ノ設定ニ切替エルヨ（生成後、必ズ元ニ戻スダカラ）
     const prevMode = mode, prevCityMode = cityMode, prevMegaMode = megaMode, prevDifficulty = difficulty, prevSelectedRegions = selectedRegions;
+    const prevUsedCityKeys = usedCityKeys, prevUsedCountries = usedCountries;
+    usedCityKeys = new Set(); usedCountries = new Set(); // プレビューハ毎回マッサラナ状態カラ試スヨ
 
     mode = $('modeSelect').value;
     const styleVal = $('citySelect').value;
@@ -1534,7 +1559,7 @@
       selectedRegions = Array.from(document.querySelectorAll('.regionCheckbox:checked')).map(el => el.value);
       if(selectedRegions.length === 0){
         $('devPreviewStatus').textContent = '地域モードダカラ、マズ地域選ンデネ！';
-        mode=prevMode; cityMode=prevCityMode; megaMode=prevMegaMode; difficulty=prevDifficulty; selectedRegions=prevSelectedRegions;
+        mode=prevMode; cityMode=prevCityMode; megaMode=prevMegaMode; difficulty=prevDifficulty; selectedRegions=prevSelectedRegions; usedCityKeys=prevUsedCityKeys; usedCountries=prevUsedCountries;
         btn.disabled = false;
         return;
       }
@@ -1558,7 +1583,7 @@
     }
 
     // 設定、元ニ戻スヨ
-    mode=prevMode; cityMode=prevCityMode; megaMode=prevMegaMode; difficulty=prevDifficulty; selectedRegions=prevSelectedRegions;
+    mode=prevMode; cityMode=prevCityMode; megaMode=prevMegaMode; difficulty=prevDifficulty; selectedRegions=prevSelectedRegions; usedCityKeys=prevUsedCityKeys; usedCountries=prevUsedCountries;
 
     $('devPreviewStatus').textContent = `${results.length}件、生成完了ダヨ`;
     renderDevPreview(results);
@@ -1776,7 +1801,7 @@
     });
 
     function beginGame(){
-      round = 1; totalScore = 0; roundHistory = []; usedCityKeys = new Set();
+      round = 1; totalScore = 0; roundHistory = []; usedCityKeys = new Set(); usedCountries = new Set();
       prefetchedRound = null; prefetchPromise = null;
       $('startPanel').classList.add('hidden');
       $('statsBar').classList.remove('hidden');
