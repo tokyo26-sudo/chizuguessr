@@ -1,0 +1,1966 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>地図ゲッサー v0.54 - ラベル無し地図クイズ／国別判定オフライン化版</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper: #f2e9d8;
+    --paper-dark: #e8dcc4;
+    --ink: #1b2a41;
+    --ink-soft: #3c4f66;
+    --brass: #a8823f;
+    --brass-light: #c9a05f;
+    --pin-red: #a8324a;
+    --line-green: #4c6b52;
+    --shadow: rgba(27,42,65,0.35);
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; height:100%;
+    font-family:'Noto Serif JP', serif;
+    background: var(--ink);
+    color: var(--paper);
+    overflow:hidden;
+  }
+  #app{ position:relative; width:100vw; height:100vh; }
+
+  /* ---------- Header ---------- */
+  #header{
+    position:absolute; top:0; left:0; right:0; z-index:1000;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 22px;
+    background:linear-gradient(180deg, rgba(27,42,65,0.92), rgba(27,42,65,0));
+    pointer-events:none;
+  }
+  #header > *{ pointer-events:auto; }
+  #titleBlock{ display:flex; flex-direction:column; }
+  #titleBlock .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px; letter-spacing:2px; color:var(--brass-light);
+    text-transform:uppercase;
+  }
+  #titleBlock h1{
+    margin:2px 0 0; font-family:'Spectral',serif; font-weight:700;
+    font-size:22px; color:var(--paper);
+    letter-spacing:0.5px;
+  }
+  #versionTag{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px; font-weight:500;
+    color: var(--ink);
+    background: var(--brass-light);
+    padding:2px 7px;
+    border-radius:10px;
+    vertical-align:middle;
+    margin-left:6px;
+  }
+  #timerStat.warn .val{ color:#d0546b; }
+
+  /* ---------- Zoom control（見えなくなってた問題を修正するヨ） ---------- */
+  .leaflet-top.leaflet-left{
+    top: 92px !important; /* ヘッダーの下まで押し出すヨ */
+    left: 18px !important;
+  }
+  .leaflet-control-zoom{
+    border:2px solid var(--brass) !important;
+    border-radius:8px !important;
+    overflow:hidden;
+    box-shadow: 0 4px 14px var(--shadow);
+  }
+  .leaflet-control-zoom a{
+    background: var(--ink) !important;
+    color: var(--paper) !important;
+    width:36px !important; height:36px !important; line-height:36px !important;
+    font-size:20px !important; font-weight:600;
+  }
+  .leaflet-control-zoom a:hover{ background: var(--ink-soft) !important; }
+
+  /* ---------- Scale bar（縮尺） ---------- */
+  .leaflet-control-scale{ margin-top:10px !important; margin-left:2px !important; }
+  .leaflet-control-scale-line{
+    background: rgba(27,42,65,0.85) !important;
+    border: 1px solid var(--brass-light) !important;
+    border-top:none !important;
+    color: var(--paper) !important;
+    font-family:'IBM Plex Mono',monospace !important;
+    font-size:11px !important;
+    padding:2px 6px !important;
+    border-radius:0 0 4px 4px;
+  }
+
+  /* ---------- Map style switcher ---------- */
+  #styleSwitcher{
+    position:absolute; left:18px; bottom:18px; z-index:1200;
+    display:flex; flex-direction:column; gap:6px;
+    background: rgba(27,42,65,0.85);
+    border:1px solid var(--brass);
+    border-radius:6px;
+    padding:8px;
+  }
+  #styleSwitcher .swLabel{
+    font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:1.5px;
+    text-transform:uppercase; color:var(--brass-light); padding:0 4px 2px;
+  }
+  #styleSwitcher .swBtn{
+    font-family:'IBM Plex Mono',monospace; font-size:12px;
+    padding:7px 12px; border-radius:4px; border:1px solid transparent;
+    background: rgba(242,233,216,0.08); color: var(--paper);
+    cursor:pointer; text-align:left;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  #styleSwitcher .swBtn:hover{ background: rgba(242,233,216,0.18); }
+  #styleSwitcher .swBtn.active{
+    background: var(--brass); color: var(--ink); font-weight:600;
+    border-color: var(--brass-light);
+  }
+  #statsBar{
+    display:flex; gap:18px; align-items:center;
+    font-family:'IBM Plex Mono', monospace;
+    background: rgba(27,42,65,0.75);
+    border:1px solid var(--brass);
+    border-radius:4px;
+    padding:8px 16px;
+    font-size:13px;
+  }
+  #statsBar .stat{ text-align:center; }
+  #statsBar .stat .val{ font-size:17px; font-weight:600; color:var(--brass-light); display:block;}
+  #statsBar .stat .lbl{ font-size:10px; letter-spacing:1px; color:#b7c0cc; }
+  #modeStat{ text-align:left; }
+  #modeStat .val{ font-size:11px; font-weight:500; white-space:nowrap; }
+
+  /* ---------- Main mystery map ---------- */
+  #mainMapFrame{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    background: var(--ink);
+    overflow:hidden;
+  }
+  #mainMap{
+    position:relative;
+    width:100%; height:100%;
+    max-width:1800px; max-height:1000px; /* デカイ画面デモ、コレ以上ハ広ガラナイヨ（周リ余白ニナルダケダヨ） */
+    filter: sepia(8%) saturate(0.9);
+  }
+  #mainMap.blurred{ filter: sepia(8%) saturate(0.9) blur(2px) brightness(0.7); }
+
+  /* ---------- Start overlay ---------- */
+  #startPanel, #finalPanel, #rankingPanel, #roundResultsPanel, #sharePanel, #progressMapPanel, #devPreviewPanel{
+    position:absolute; inset:0; z-index:2000;
+    display:flex; align-items:center; justify-content:center;
+    background: radial-gradient(circle at 50% 40%, rgba(27,42,65,0.92), rgba(10,16,26,0.97));
+  }
+  .roundResultRow{
+    padding:10px 4px; border-bottom:1px solid rgba(168,130,63,0.25);
+    font-size:14px;
+  }
+  .roundResultRow .rrTop{ display:flex; justify-content:space-between; margin-bottom:4px; }
+  .roundResultRow .rrScore{ font-weight:bold; }
+  .roundResultRow .rrLinks a{ color: var(--brass, #a8823f); margin-right:14px; text-decoration:underline; }
+  #rankingList li{
+    display:flex; align-items:center; gap:10px;
+    padding:8px 6px; border-bottom:1px solid rgba(168,130,63,0.25);
+    font-size:14px;
+  }
+  #rankingList li:first-child{ font-weight:bold; }
+  #rankingList .rankNum{ width:24px; flex-shrink:0; opacity:0.7; }
+  #rankingList .rankName{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #rankingList .rankScore{ flex-shrink:0; }
+  #rankingList .rankingLoading{ opacity:0.7; justify-content:center; }
+  .card{
+    background: var(--paper);
+    color: var(--ink);
+    border-radius:6px;
+    padding:34px 38px;
+    max-width:420px;
+    width:90%;
+    max-height:90vh; overflow-y:auto; /* 窓ガ小サクテモ、中身スクロールシテボタンニ届クヨウニスルダカラ */
+    box-shadow: 0 20px 60px var(--shadow);
+    border:1px solid var(--brass);
+    outline: 1px dashed var(--brass-light); outline-offset: -9px; /* 点線ハoutlineニシテ、スクロールシテモズレナイヨウニするヨ */
+    position:relative;
+  }
+  .card h2{
+    font-family:'Spectral',serif; font-size:26px; margin:0 0 6px;
+    color: var(--ink);
+  }
+  .card p{
+    font-size:14px; line-height:1.7; color: var(--ink-soft);
+    margin:6px 0 18px;
+  }
+  .fieldRow{ margin:16px 0; }
+  .fieldRow label{
+    display:block; font-family:'IBM Plex Mono',monospace;
+    font-size:11px; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--brass); margin-bottom:6px;
+  }
+  select, .btn{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:14px;
+  }
+  select{
+    width:100%; padding:9px 10px; border-radius:3px;
+    border:1px solid var(--ink-soft); background:#fff; color:var(--ink);
+  }
+  .btn{
+    display:inline-block; width:100%;
+    padding:12px 16px; margin-top:10px;
+    background: var(--ink); color: var(--paper);
+    border:none; border-radius:3px; cursor:pointer;
+    letter-spacing:1px; font-weight:600;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+  .btn:hover{ background: var(--ink-soft); }
+  .btn:active{ transform: scale(0.98); }
+  .btn.brass{ background: var(--brass); color: var(--ink);}
+  .btn.brass:hover{ background: var(--brass-light); }
+  .btn:disabled{ opacity:0.5; cursor:not-allowed; }
+
+  /* ---------- Loading ---------- */
+  #loadingPanel{
+    position:absolute; inset:0; z-index:1900;
+    display:none; align-items:center; justify-content:center;
+    background: rgba(10,16,26,0.75);
+    font-family:'IBM Plex Mono', monospace; font-size:14px; color:var(--brass-light);
+    flex-direction:column; gap:10px;
+  }
+  #loadingPanel .spinner{
+    width:26px; height:26px; border-radius:50%;
+    border:3px solid rgba(201,160,95,0.25); border-top-color: var(--brass-light);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+
+  /* ---------- Guess panel (folded map card) ---------- */
+  #guessPanel{
+    position:absolute; right:18px; bottom:18px; z-index:1200;
+    width:340px;
+    background: var(--paper);
+    border-radius:6px;
+    box-shadow: 0 12px 40px var(--shadow);
+    border:1px solid var(--brass);
+    overflow:hidden;
+    transition: width 0.25s ease, height 0.25s ease;
+  }
+  #guessPanel .ghead{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 12px; background: var(--ink); color:var(--paper);
+    cursor: grab; user-select:none;
+  }
+  #guessPanel .ghead:active{ cursor: grabbing; }
+  #guessPanel .ghead span.t{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:1.5px;
+    text-transform:uppercase; color: var(--brass-light);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .collapseBtn{
+    background:none; border:1px solid var(--brass-light); border-radius:3px;
+    color:var(--paper); cursor:pointer; font-size:12px;
+    font-family:'IBM Plex Mono',monospace;
+    width:22px; height:22px; line-height:20px; text-align:center;
+    flex-shrink:0; margin-left:8px;
+  }
+  .collapseBtn:hover{ background: rgba(242,233,216,0.15); }
+  #guessPanel.collapsed{ width:200px; }
+  #guessPanel.collapsed #guessMap,
+  #guessPanel.collapsed #guessFooter{ display:none; }
+  #guessMap{ height:220px; width:100%; }
+  #guessPanel.large{ width:680px; }
+  #guessPanel.large #guessMap{ height:440px; }
+  #guessFooter{
+    padding:10px 12px 12px;
+    display:flex; flex-direction:column; gap:8px;
+  }
+  #guessCoord{
+    font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-soft);
+    min-height:16px;
+  }
+
+  /* ---------- Result panel ---------- */
+  #resultPanel{
+    position:absolute; right:18px; bottom:18px; z-index:1300;
+    width:340px;
+    background: var(--paper); color:var(--ink);
+    border-radius:6px; border:1px solid var(--brass);
+    box-shadow: 0 12px 40px var(--shadow);
+    display:none;
+    overflow:hidden;
+    transition: width 0.25s ease;
+  }
+  #resultPanel .ghead{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 12px; background: var(--ink); color:var(--paper);
+    cursor: grab; user-select:none;
+  }
+  #resultPanel .ghead:active{ cursor: grabbing; }
+  #resultPanel .ghead span.t{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:1.5px;
+    text-transform:uppercase; color: var(--brass-light);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  #resultPanel.collapsed{ width:200px; }
+  #resultPanel.collapsed #resultMap,
+  #resultPanel.collapsed #resultBody{ display:none; }
+  #resultMap{ height:200px; width:100%; }
+  #resultBody{ padding:14px 16px 16px; }
+  #resultBody .place{
+    font-family:'Spectral',serif; font-weight:700; font-size:18px; margin-bottom:6px;
+  }
+  #resultBody .distanceRow{
+    display:flex; justify-content:space-between; align-items:baseline;
+    font-family:'IBM Plex Mono',monospace; font-size:13px; margin:4px 0;
+  }
+  #resultBody .scoreVal{
+    font-size:26px; font-weight:700; color: var(--pin-red);
+  }
+
+  .hidden{ display:none !important; }
+
+  /* leaflet popups tuned to theme */
+  .leaflet-popup-content-wrapper{ background: var(--paper); color: var(--ink); font-family:'Noto Serif JP',serif; }
+  .leaflet-popup-tip{ background: var(--paper); }
+
+  /* ==========================================================
+     スマホ向けレイアウト（幅640px以下でコレに切り替わるヨ）
+     ========================================================== */
+  @media (max-width: 640px){
+
+    /* ---- ヘッダー：縦積み・コンパクトにするヨ ---- */
+    #header{
+      padding:10px 12px;
+      flex-direction:column; align-items:flex-start; gap:8px;
+    }
+    #titleBlock .eyebrow{ font-size:9px; letter-spacing:1px; }
+    #titleBlock h1{ font-size:18px; }
+    #versionTag{ font-size:10px; padding:1px 6px; }
+    #statsBar{ gap:10px; padding:6px 10px; align-self:stretch; justify-content:space-between; }
+    #statsBar .stat .val{ font-size:15px; }
+    #statsBar .stat .lbl{ font-size:9px; }
+    #modeStat .val{ font-size:9px; white-space:normal; line-height:1.3; }
+
+    /* ---- ズームボタン＆縮尺：ヘッダーが縦積みで高くなった分、下に押し出すヨ ---- */
+    .leaflet-top.leaflet-left{ top: 132px !important; left: 10px !important; }
+    .leaflet-control-zoom a{ width:40px !important; height:40px !important; line-height:40px !important; }
+
+    /* ---- 地図パターン切り替え：回答パネル（ボトムシート）ニ隠レナイヨウ、画面上部・右側ニ移動スルヨ ---- */
+    #styleSwitcher{
+      left:auto; right:8px; bottom:auto; top:130px; width:100px;
+      flex-direction:column; gap:4px;
+      padding:6px;
+      z-index:1600; /* ボトムシート（1500）ヨリ手前ニ出すヨ */
+    }
+    #styleSwitcher .swLabel{ display:none; }
+    #styleSwitcher .swBtn{
+      text-align:center; padding:8px 4px; font-size:10px;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+
+    /* ---- 回答パネル・結果パネル：画面下からのボトムシートにするヨ ---- */
+    #guessPanel, #resultPanel{
+      position:fixed; left:0; right:0; bottom:0; top:auto;
+      width:100%; max-width:100%;
+      max-height:72vh;
+      overflow-y:auto;
+      border-radius:18px 18px 0 0;
+      transform: translateY(0);
+      transition: transform 0.28s ease;
+      z-index:1500;
+    }
+    /* 「折りたたみ」＝画面の下に隠れて、つまみ（ghead）だけ見える状態にするヨ */
+    #guessPanel.collapsed, #resultPanel.collapsed{
+      transform: translateY(calc(100% - 54px));
+    }
+
+    #guessPanel .ghead, #resultPanel .ghead{
+      padding:15px 16px; cursor:pointer; position:relative;
+    }
+    #guessPanel .ghead::before, #resultPanel .ghead::before{
+      content:""; position:absolute; left:50%; top:6px;
+      width:36px; height:4px; margin-left:-18px;
+      background: var(--brass-light); border-radius:3px; opacity:0.7;
+    }
+    .collapseBtn{ width:36px; height:36px; line-height:34px; font-size:16px; }
+
+    #guessMap{ height:42vh; }
+    #resultMap{ height:28vh; }
+    #guessPanel.large{ max-height:92vh; }
+    #guessPanel.large #guessMap{ height:70vh; }
+    #guessFooter{ padding:12px 16px 16px; }
+    #guessFooter .btn, #resultBody .btn{ padding:15px 16px; font-size:15px; }
+    #resultBody{ padding:14px 16px 18px; }
+
+    /* ---- スタート画面・結果画面のカードも少しコンパクトにするヨ ---- */
+    .card{ padding:24px 20px; width:92%; }
+    .card h2{ font-size:22px; }
+  }
+  /* ---------- スクロールバー、隠れずに常時見えるヨウにするヨ ---------- */
+  #regionCheckboxes, #statusRegionList, #rankingList, #roundResultsList, .card{
+    scrollbar-width: thin; /* Firefox用ダヨ */
+    scrollbar-color: var(--brass-light, #c9a876) rgba(255,255,255,0.12);
+  }
+  #regionCheckboxes::-webkit-scrollbar, #statusRegionList::-webkit-scrollbar,
+  #rankingList::-webkit-scrollbar, #roundResultsList::-webkit-scrollbar, .card::-webkit-scrollbar{
+    width: 10px;
+  }
+  #regionCheckboxes::-webkit-scrollbar-track, #statusRegionList::-webkit-scrollbar-track,
+  #rankingList::-webkit-scrollbar-track, #roundResultsList::-webkit-scrollbar-track, .card::-webkit-scrollbar-track{
+    background: rgba(255,255,255,0.1); border-radius: 5px;
+  }
+  #regionCheckboxes::-webkit-scrollbar-thumb, #statusRegionList::-webkit-scrollbar-thumb,
+  #rankingList::-webkit-scrollbar-thumb, #roundResultsList::-webkit-scrollbar-thumb, .card::-webkit-scrollbar-thumb{
+    background: var(--brass-light, #c9a876); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="header">
+    <div id="titleBlock">
+      <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
+      <h1>地図ゲッサー <span id="versionTag">0.54</span></h1>
+    </div>
+    <div id="statsBar" class="hidden">
+      <div class="stat" id="modeStat"><span class="val" id="modeVal">-</span><span class="lbl">モード</span></div>
+      <div class="stat" id="timerStat"><span class="val" id="timerVal">--</span><span class="lbl">残り秒</span></div>
+      <div class="stat"><span class="val" id="roundVal">1 / 5</span><span class="lbl">ラウンド</span></div>
+      <div class="stat"><span class="val" id="scoreVal">0</span><span class="lbl">合計スコア</span></div>
+    </div>
+  </div>
+
+  <div id="mainMapFrame"><div id="mainMap"></div></div>
+
+  <div id="styleSwitcher" class="hidden">
+    <div class="swLabel">地図パターン</div>
+    <button class="swBtn" data-style="voyager">① 標準（色つき）</button>
+    <button class="swBtn" data-style="satellite">② 航空写真</button>
+  </div>
+
+  <div id="loadingPanel">
+    <div class="spinner"></div>
+    <div>地図を切り出しチュウ...</div>
+  </div>
+
+  <div id="guessPanel" class="hidden">
+    <div class="ghead"><span class="t">ここだと思う場所をタップ</span><button class="collapseBtn" id="guessCollapseBtn" title="折りたたむ">▼</button></div>
+    <div id="guessMap"></div>
+    <div id="guessFooter">
+      <div id="guessCoord">まだピンが立ってないヨ</div>
+      <button class="btn brass" id="guessBtn" disabled>この場所で決定！</button>
+    </div>
+  </div>
+
+  <div id="resultPanel">
+    <div class="ghead"><span class="t">結果発表</span><button class="collapseBtn" id="resultCollapseBtn" title="折りたたむ">▼</button></div>
+    <div id="resultMap"></div>
+    <div id="resultBody">
+      <div class="distanceRow" id="cityNameRow" style="display:none;"><span>正解の都市</span><span id="cityNameText">-</span></div>
+      <div class="distanceRow"><span>誤差距離</span><span id="distText">-</span></div>
+      <div class="distanceRow"><span>今回のスコア</span><span class="scoreVal" id="roundScoreText">-</span></div>
+      <button class="btn" id="nextBtn">次のラウンドへ →</button>
+    </div>
+  </div>
+
+  <div id="startPanel">
+    <div class="card">
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.54</span></h2>
+      <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
+      <div id="sharedQuizBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
+        <p id="sharedQuizBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
+        <button class="btn brass" id="playSharedQuizBtn" style="width:100%;">コノ問題ニ挑戦スル</button>
+      </div>
+      <div id="sharedResultBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
+        <p id="sharedResultBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
+        <button class="btn" id="matchSharedSettingsBtn" style="width:100%;">同ジ設定ヲ当テハメル</button>
+      </div>
+      <div class="fieldRow">
+        <label>出題エリア</label>
+        <select id="modeSelect">
+          <option value="world">世界（ぜんぶ）</option>
+          <option value="japan">日本国内だけ</option>
+          <option value="region">地域を選ぶ</option>
+        </select>
+      </div>
+      <div id="regionPickerRow" class="fieldRow hidden">
+        <label>地域（複数選べるヨ）</label>
+        <div id="regionUnlockHint" style="font-size:12px; margin-bottom:6px; color: var(--brass-light, #c9a876);"></div>
+        <div id="regionCheckboxes" style="display:flex; flex-direction:column; gap:4px; font-size:13px; max-height:220px; overflow-y:auto; padding:8px; border:1px solid rgba(168,130,63,0.3); border-radius:6px;"></div>
+      </div>
+      <div class="fieldRow">
+        <label>出題スタイル</label>
+        <select id="citySelect">
+          <option value="random" selected>ランダム座標（今まで通り）</option>
+          <option value="city">都市モード（有名な町から地方の小さな町まで出るヨ）</option>
+          <option value="mega">大都市モード（世界は人口50万人以上・日本は市町村の中心地）</option>
+        </select>
+      </div>
+      <div class="fieldRow">
+        <label>難易度</label>
+        <select id="difficultySelect">
+          <option value="easy">かんたん（広い範囲）</option>
+          <option value="normal" selected>ふつう</option>
+          <option value="hard">むずかしい（せまい範囲）</option>
+        </select>
+      </div>
+      <div class="fieldRow">
+        <label>制限時間</label>
+        <select id="timeSelect">
+          <option value="unlimited" selected>無制限</option>
+          <option value="30">30秒（見る＋答える、込み）</option>
+          <option value="10">10秒（見る＋答える、込み）</option>
+          <option value="5">5秒（見る＋答える、込み・超高速）</option>
+        </select>
+      </div>
+      <div class="fieldRow">
+        <label>ラウンド数</label>
+        <select id="roundsSelect">
+          <option value="3">3問</option>
+          <option value="5" selected>5問</option>
+          <option value="10">10問</option>
+        </select>
+      </div>
+      <button class="btn brass" id="startBtn">スタートするヨ</button>
+      <button class="btn" id="viewRankingFromStartBtn" style="margin-top:8px;">🏆 ランキングを見る</button>
+      <button type="button" class="btn" id="viewStatusBtn" style="margin-top:8px;">📊 ステータス（経験値・解放地域）</button>
+      <button type="button" class="btn" id="viewDevPreviewBtn" style="margin-top:8px; opacity:0.7; font-size:12px;">🧪 開発用：サンプル問題プレビュー</button>
+    </div>
+  </div>
+
+  <div id="finalPanel" class="hidden">
+    <div class="card">
+      <h2>結果ダヨ！</h2>
+      <p id="finalSummary"></p>
+      <div id="rankingSubmitRow" class="hidden" style="margin:14px 0; padding:12px; border:1px solid rgba(168,130,63,0.4); border-radius:8px;">
+        <div id="rankingCategoryNote" style="font-size:13px; margin-bottom:6px;"></div>
+        <input type="text" id="rankingNameInput" placeholder="お名前（20文字まで）" maxlength="20" style="width:100%; box-sizing:border-box; margin-bottom:8px;">
+        <button class="btn" id="rankingSubmitBtn" style="width:100%;">ランキングに登録スル</button>
+        <div id="rankingSubmitStatus" style="font-size:13px; margin-top:6px; min-height:1em;"></div>
+      </div>
+      <button class="btn" id="viewRoundResultsBtn">📋 ラウンド結果一覧</button>
+      <button class="btn" id="openShareBtn">🔗 共有スル</button>
+      <button class="btn" id="viewRankingBtn">🏆 ランキングを見る</button>
+      <button class="btn brass" id="restartBtn">もう一回あそぶ</button>
+    </div>
+  </div>
+
+  <div id="rankingPanel" class="hidden">
+    <div class="card">
+      <h2>🏆 ランキング <span id="rankingCategoryTitle" style="font-size:14px; font-weight:normal;"></span></h2>
+      <ul id="rankingList" style="list-style:none; padding:0; margin:0 0 14px 0; max-height:50vh; overflow-y:auto;"></ul>
+      <button class="btn brass" id="closeRankingBtn">閉じる</button>
+    </div>
+  </div>
+
+  <div id="roundResultsPanel" class="hidden">
+    <div class="card" style="max-width:520px;">
+      <h2>📋 ラウンド結果一覧ダヨ</h2>
+      <div id="roundResultsList" style="max-height:55vh; overflow-y:auto; margin-bottom:14px;"></div>
+      <button class="btn brass" id="closeRoundResultsBtn">閉じる</button>
+    </div>
+  </div>
+
+  <div id="sharePanel" class="hidden">
+    <div class="card" style="max-width:480px; width:92%;">
+      <h2>🔗 共有リンクダヨ</h2>
+      <div class="fieldRow">
+        <label style="font-size:13px;">コノ問題ヲ共有（同ジ場所デ挑戦デキルヨ）</label>
+        <textarea id="shareQuizUrlInput" readonly rows="3" style="width:100%; box-sizing:border-box; font-size:11px; line-height:1.4; word-break:break-all; resize:none; margin-bottom:6px;"></textarea>
+        <button class="btn" id="copyQuizUrlBtn" style="padding:8px 20px;">コピー</button>
+      </div>
+      <div class="fieldRow">
+        <label style="font-size:13px;">スコアダケ共有（結果報告用ダヨ）</label>
+        <textarea id="shareScoreUrlInput" readonly rows="2" style="width:100%; box-sizing:border-box; font-size:11px; line-height:1.4; word-break:break-all; resize:none; margin-bottom:6px;"></textarea>
+        <button class="btn" id="copyScoreUrlBtn" style="padding:8px 20px;">コピー</button>
+      </div>
+      <div id="shareStatus" style="font-size:13px; min-height:1em; margin:8px 0;"></div>
+      <button class="btn brass" id="closeShareBtn">閉じる</button>
+    </div>
+  </div>
+
+  <div id="progressMapPanel" class="hidden">
+    <div class="card" style="max-width:640px; width:94%; max-height:90vh; overflow-y:auto;">
+      <h2>📊 ステータスダヨ</h2>
+      <p id="progressMapSummary" style="font-size:13px; margin:0 0 10px 0;"></p>
+      <div id="progressMapEl" style="width:100%; height:300px; border-radius:6px; overflow:hidden;"></div>
+      <p style="font-size:12px; opacity:0.75; margin:8px 0 12px 0;">🟩 解放済ミ　🟥 未解放</p>
+      <div id="statusRegionUnlockText" style="font-size:12px; margin-bottom:6px; color: var(--brass-light, #c9a876);"></div>
+      <div id="statusRegionList" style="display:flex; flex-direction:column; gap:4px; font-size:13px; max-height:220px; overflow-y:auto; padding:8px; border:1px solid rgba(168,130,63,0.3); border-radius:6px;"></div>
+      <button class="btn brass" id="closeProgressMapBtn" style="margin-top:10px;">閉じる</button>
+    </div>
+  </div>
+
+  <div id="devPreviewPanel" class="hidden">
+    <div class="card" style="max-width:640px; width:94%; max-height:90vh; overflow-y:auto;">
+      <h2>🧪 サンプル問題プレビュー（開発用ダヨ）</h2>
+      <p style="font-size:13px; margin:0 0 10px 0;">今ノ設定（出題エリア・出題スタイル・難易度）デ、座標ヲマトメテ生成シテ、地図ニ表示スルヨ。国判定モ通信不要ニナッタカラ、速イハズダヨ。</p>
+      <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
+        <label style="font-size:13px;">生成数</label>
+        <select id="devPreviewCount" style="width:auto; padding:4px 8px;">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="30">30</option>
+          <option value="50">50</option>
+        </select>
+        <button type="button" class="btn" id="runDevPreviewBtn" style="width:auto; margin:0; padding:8px 16px;">生成スル</button>
+      </div>
+      <div id="devPreviewStatus" style="font-size:13px; min-height:1em; margin-bottom:8px;"></div>
+      <div id="devPreviewMapEl" style="width:100%; height:320px; border-radius:6px; overflow:hidden; margin-bottom:10px;"></div>
+      <div id="devPreviewList" style="font-size:12px; max-height:200px; overflow-y:auto; padding:8px; border:1px solid rgba(168,130,63,0.3); border-radius:6px;"></div>
+      <button class="btn brass" id="closeDevPreviewBtn" style="margin-top:10px;">閉じる</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!-- ランキング機能用ダカラ。使ワナイ人ハ気ニシナクテイイヨ -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<!-- 都市モード用データダカラ。主要分ハ最初カラ読込ンデ、むずかしい用ノ追加分ハ必要ナ時ダケ後カラ読込ムヨ -->
+<script src="cities_data.js"></script>
+<!-- 大都市（世界）・全市町村（日本）用データダカラ。小サイから最初カラ読込ムヨ -->
+<script src="cities_data_mega.js"></script>
+<!-- 海岸線判定用ダカラ。RLE圧縮した陸地マスクデータダヨ -->
+<script src="landmask_data.js"></script>
+<!-- 地域選択モード用データダカラ -->
+<script src="regions_data.js"></script>
+<!-- 国別判定用データダカラ（通信不要デ「ドノ国カ」判定デキルヨウニナルヨ） -->
+<script src="country_mask_data.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // ---------- config ----------
+  const VERSION = '0.52';
+
+  // ランキング機能ダカラ。使ウナラ、下ノFIREBASE_CONFIGヲ自分ノFirebaseプロジェクトノ値ニ書キ換エルダケデOKダヨ。
+  // 書キ換エナカッタラ、ランキング関連ノボタン、自動デ隠レルカラ、ゲーム自体ハ普通ニ遊ベルヨ。
+  // 設定手順、READMEカ引継ギメモ見テネ。
+  const FIREBASE_CONFIG = {
+    apiKey: "YOUR_API_KEY_HERE",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
+
+  let rankingEnabled = false;
+  let db = null;
+  try{
+    if(FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey !== 'YOUR_API_KEY_HERE' && typeof firebase !== 'undefined'){
+      firebase.initializeApp(FIREBASE_CONFIG);
+      db = firebase.firestore();
+      rankingEnabled = true;
+    }
+  }catch(e){
+    console.warn('ランキング機能、初期化失敗シタヨ（設定ミス カ 通信エラー ダト思ウ）', e);
+    rankingEnabled = false;
+  }
+
+  const CARTO_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+  const ESRI_ATTR = 'Esri, Maxar, Earthstar Geographics';
+  const LABEL_TILE = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+
+  // メイン（問題）地図で切り替えられるパターン。ラベル入りタイルは絶対に使わないヨ（地名バレ防止ダカラ）
+  const MAP_STYLES = {
+    voyager:   { url:'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', subdomains:'abcd', maxZoom:18, attribution:CARTO_ATTR },
+    satellite: { url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', subdomains:'', maxZoom:18, attribution:ESRI_ATTR }
+  };
+
+  // 都市モード用データ（GeoNamesベース、[緯度,経度,表示名,国コード]の配列ダカラ）
+  // 都市データは外部ファイル cities_data.js から読込むヨ（下のscriptタグ見テネ）
+
+  // 難易度ごとのズーム範囲（数字が大きいほど寄る＝範囲が狭くなる＝難しいヨ）
+  const ZOOM_CONFIG = {
+    easy:   { world:[4,5],  japan:[6,7]  },
+    normal: { world:[6,9],  japan:[9,11] },
+    hard:   { world:[9,11], japan:[12,13] }
+  };
+
+  // fallback land points in case reverse-geocode lookups fail (mix of world + japan)
+  const FALLBACK_WORLD = [
+    [48.8566,2.3522],[35.6762,139.6503],[40.7128,-74.0060],[-33.8688,151.2093],
+    [55.7558,37.6173],[19.0760,72.8777],[-23.5505,-46.6333],[30.0444,31.2357],
+    [51.5074,-0.1278],[1.3521,103.8198],[41.9028,12.4964],[37.7749,-122.4194],
+    [52.5200,13.4050],[-1.2921,36.8219],[13.7563,100.5018],[45.4642,9.1900],
+    [39.9042,116.4074],[-34.6037,-58.3816],[59.3293,18.0686],[6.5244,3.3792]
+  ];
+  const FALLBACK_JAPAN = [
+    [35.6895,139.6917],[34.6937,135.5023],[43.0642,141.3469],[26.2124,127.6809],
+    [38.2682,140.8694],[35.0116,135.7681],[36.5613,136.6562],[33.5904,130.4017],
+    [35.1815,136.9066],[34.3853,132.4553],[39.7036,141.1527],[32.7503,129.8779],
+    [37.9161,139.0364],[35.4437,139.6380],[34.9855,138.3827]
+  ];
+
+  // ---------- state ----------
+  let mainMap, guessMap, resultMap;
+  let guessMarker=null, guessLatLng=null;
+  let actualLatLng=null, actualMarker=null, resultLine=null;
+  let roundHistory=[]; // 各ラウンドの記録（結果一覧・Googleマップリンク用ダヨ）
+  let round=1, totalRounds=5, totalScore=0, mode='world';
+  let difficulty='normal', timeSetting='unlimited';
+  let cityMode=false;
+  let megaMode=false;
+  let selectedRegions=[]; // 「地域を選ぶ」モードの時、チェックされた地域キーの配列ダヨ
+  let totalXP=0; // 累計経験値（localStorageに貯まるヨ）
+  let unlockedRegions=new Set(); // 解放済みの地域キー集合ダヨ
+  let countdownInterval=null, secondsLeft=0;
+  let currentStyleKey='voyager', mainTileLayer=null;
+  let prefetchedRound=null, prefetchPromise=null; // 次の問題の先読み用ダカラ
+  let currentZoom=null; // シェア用に今のラウンドのズームを覚えとくヨ
+  let sharedRounds=null, sharedMeta=null; // 共有された「問題」を受け取った時ダケ入るヨ
+  let sharedResultInfo=null; // 共有された「スコア」を受け取った時ダケ入るヨ
+  let usedCityKeys=new Set(); // 同ジゲーム内デ、モウ出タ都市ヲ覚エテオク（重複避ケル用ダヨ）
+  let usedCountries=new Set(); // 同ジゲーム内デ、モウ出タ国ヲ覚エテオク（同ジ国連続避ケル用ダヨ）
+
+  const $ = id => document.getElementById(id);
+  const isMobile = () => window.matchMedia('(max-width: 640px)').matches;
+
+  // 地図パネルのサイズが0のまま計算スルト変な場所ニ変な倍率デ飛ブカラ、ちゃんとサイズ確定スルマデ待つヨ
+  function waitForMapSize(map, cb, tries){
+    tries = tries || 0;
+    const size = map.getSize();
+    if((size.x > 10 && size.y > 10) || tries > 20){
+      cb();
+    } else {
+      requestAnimationFrame(() => waitForMapSize(map, cb, tries+1));
+    }
+  }
+
+  function haversine(lat1,lon1,lat2,lon2){
+    const R=6371;
+    const toRad = d => d*Math.PI/180;
+    const dLat = toRad(lat2-lat1);
+    const dLon = toRad(lon2-lon1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+    return 2*R*Math.asin(Math.sqrt(a));
+  }
+
+  function scoreFromDistance(km, mode){
+    // scaling differs: japan/regionモードは範囲狭いから、厳しめの基準ダヨ
+    let scale;
+    if(mode === 'japan') scale = 300;
+    else if(mode === 'region') scale = 200; // 世界モードより10倍近くシビアにするヨ
+    else scale = 2000;
+    if(km < 1) return 5000;
+    const s = Math.round(5000 * Math.exp(-km/scale));
+    return Math.max(0, Math.min(5000, s));
+  }
+
+  // 海関連ダト判定スル単語リストダヨ（Nominatimが返す種類・住所キーをココでチェックするヨ）
+  const WATER_TYPES = ['water','bay','strait','sea','ocean','reef','channel','fjord','lagoon','sound','gulf'];
+
+  async function reverseGeocode(lat, lon){
+    try{
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=10&accept-language=ja`;
+      const res = await fetch(url, {headers:{'Accept':'application/json'}});
+      if(!res.ok) return null;
+      const data = await res.json();
+      if(data && !data.error && data.address){
+        // Nominatimハ海の上デモ「近くの陸地の住所」返しちゃうコトあるカラ、
+        // 種類が海関連（type/categoryが water・bay・sea等）ダッタラ、陸地ジャナイと判定するヨ
+        const typ = (data.type || '').toLowerCase();
+        const cat = (data.category || '').toLowerCase();
+        if(cat === 'natural' && WATER_TYPES.includes(typ)) return false;
+        // 住所の中に「sea」「bay」「ocean」等のキーが直接入ってるコトもあるカラ、ソレもチェックするヨ
+        const addrKeys = Object.keys(data.address).map(k => k.toLowerCase());
+        if(addrKeys.some(k => WATER_TYPES.includes(k))) return false;
+        return {
+          name: data.display_name || (data.address.country || '不明な場所'),
+          countryCode: (data.address.country_code || '').toLowerCase()
+        };
+      }
+      return false; // 海の上など、住所データが無い
+    }catch(e){
+      return null; // 通信エラー -> フォールバックに回すヨ
+    }
+  }
+
+  // 表示予定のズームレベルから、だいたいの表示範囲（度数）を見積もるヨ
+  function estimateHalfExtentDeg(zoom, lat){
+    const metersPerPixel = 156543.03392 * Math.cos(lat*Math.PI/180) / Math.pow(2, zoom);
+    const halfWidthMeters = metersPerPixel * 420; // 画面の半分くらいのピクセル数を仮定するヨ（陸地率チェック用ダカラ）
+    const degLat = halfWidthMeters / 111320;
+    const cosLat = Math.max(0.15, Math.cos(lat*Math.PI/180));
+    const degLon = degLat / cosLat;
+    return {degLat, degLon};
+  }
+
+  // 動カセル範囲専用ダヨ。パソコンノ普通ノ画面幅（1800pxクライ、フレーム上限ト合ワセタヨ）ヲ仮定スルカラ、
+  // コッチハ広メニ計算スルヨ（陸地率チェック用トハ別目的ダカラ、分ケタダヨ）
+  function estimateHalfExtentDegForBounds(zoom, lat){
+    const metersPerPixel = 156543.03392 * Math.cos(lat*Math.PI/180) / Math.pow(2, zoom);
+    const halfWidthMeters = metersPerPixel * 900; // 1800px幅ノ半分ダヨ
+    const degLat = halfWidthMeters / 111320;
+    const cosLat = Math.max(0.15, Math.cos(lat*Math.PI/180));
+    const degLon = degLat / cosLat;
+    return {degLat, degLon};
+  }
+
+  // 陸地マスク（RLE圧縮）から、コノ座標が陸地カ判定するヨ。通信不要・一瞬デ終わるダカラ
+  function isLandAt(lat, lon){
+    if(typeof LANDMASK_ROWS === 'undefined') return true; // 万一データ未読込ミナラ、判定スキップして通すヨ
+    let la = Math.max(-89.999, Math.min(90, lat));
+    let lo = ((lon + 180) % 360 + 360) % 360 - 180; // -180〜180の範囲にならすヨ
+    let col = Math.floor((lo + 180) / 360 * LANDMASK_WIDTH);
+    let row = Math.floor((90 - la) / 180 * LANDMASK_HEIGHT);
+    col = Math.max(0, Math.min(LANDMASK_WIDTH - 1, col));
+    row = Math.max(0, Math.min(LANDMASK_HEIGHT - 1, row));
+    const runs = LANDMASK_ROWS[row];
+    let cur = runs[0];
+    let pos = 0;
+    for(let i=1;i<runs.length;i++){
+      pos += runs[i];
+      if(col < pos) return cur === 1;
+      cur = cur ? 0 : 1;
+    }
+    return cur === 1;
+  }
+
+  // 国別マスクカラ、コノ座標ガドノ国カ判定スルヨ（通信不要・一瞬ダカラ、Nominatim要ラナクナルヨ）
+  function countryAt(lat, lon){
+    if(typeof COUNTRY_MASK_ROWS === 'undefined') return null; // 万一データ未読込ミナラ、判定不能扱イダヨ
+    let la = Math.max(-89.999, Math.min(90, lat));
+    let lo = ((lon + 180) % 360 + 360) % 360 - 180;
+    let col = Math.floor((lo + 180) / 360 * COUNTRY_MASK_WIDTH);
+    let row = Math.floor((90 - la) / 180 * COUNTRY_MASK_HEIGHT);
+    col = Math.max(0, Math.min(COUNTRY_MASK_WIDTH - 1, col));
+    row = Math.max(0, Math.min(COUNTRY_MASK_HEIGHT - 1, row));
+    const runs = COUNTRY_MASK_ROWS[row];
+    let pos = 0;
+    for(let i=0;i<runs.length;i+=2){
+      pos += runs[i+1];
+      if(col < pos){
+        const val = runs[i];
+        return val === 0 ? null : COUNTRY_MASK_LIST[val-1];
+      }
+    }
+    return null;
+  }
+
+  // 地域選択モード：選バレタ地域ノ範囲内デ座標ヲ引クヨ（日付変更線マタグ地域モ対応スルダカラ）
+  function sampleLatLonInRegion(regionKey){
+    const b = REGION_BOUNDS[regionKey]; // [minLat, minLon, maxLat, maxLon]
+    const lat = b[0] + Math.random()*(b[2]-b[0]);
+    let lon;
+    if(b[1] > b[3]){
+      // minLon > maxLonナラ、日付変更線ヲマタイデル印ダカラ、特別ニ扱ウヨ
+      const span1 = 180 - b[1];
+      const span2 = b[3] - (-180);
+      const r = Math.random()*(span1+span2);
+      lon = r < span1 ? b[1] + r : -180 + (r - span1);
+    } else {
+      lon = b[1] + Math.random()*(b[3]-b[1]);
+    }
+    return {lat, lon};
+  }
+
+  async function getRandomPoint(mode, zoom){
+    for(let i=0;i<15;i++){
+      let lat, lon;
+      if(mode==='japan'){
+        lat = 26 + Math.random()*(45.5-26);
+        lon = 128.5 + Math.random()*(145.5-128.5);
+      } else if(mode==='region' && selectedRegions.length > 0){
+        const regionKey = selectedRegions[Math.floor(Math.random()*selectedRegions.length)];
+        const p = sampleLatLonInRegion(regionKey);
+        lat = p.lat; lon = p.lon;
+      } else {
+        lat = -55 + Math.random()*(70-(-55));
+        lon = -180 + Math.random()*360;
+      }
+      // ①まず陸地マスクでオフライン判定するヨ。海ならすぐ引き直すダカラ、通信要らないヨ
+      if(!isLandAt(lat, lon)) continue;
+
+      // ②陸地率チェック：表示範囲の隅っこも陸地マスクで確認して、まるごと海じゃないか見るヨ
+      const {degLat, degLon} = estimateHalfExtentDeg(zoom, lat);
+      const cornerLat = lat + degLat*0.65;
+      const cornerLon = lon + degLon*0.65;
+      if(!isLandAt(cornerLat, cornerLon)){
+        continue; // 隅が海 -> 表示範囲の大半が海の可能性高いカラ、引き直すヨ
+      }
+
+      // ③国別マスクデ、ドノ国カ判定スルヨ（コッチも通信不要・一瞬ダヨ）
+      const country = countryAt(lat, lon);
+
+      if(mode === 'japan'){
+        if(country !== 'JP') continue; // 日本ジャナカッタラ引キ直スヨ（北方領土・対馬海峡ノ向コウ側トカ対策ダカラ）
+        return {lat, lon, name: '（日本のどこか）'};
+      }
+      if(mode === 'region' && selectedRegions.length > 0){
+        // 地域選択モードダカラ、選バレタ地域ノ国ニ本当ニ入ッテルカ確認スルヨ（バウンディングボックスハ隣国モ含ムカラ）
+        const geoRegion = country ? COUNTRY_TO_REGION[country] : null;
+        if(!geoRegion || !selectedRegions.includes(geoRegion)) continue;
+        return {lat, lon, name: '（選んだ地域のどこか）'};
+      }
+      // 通常（世界）モードダケ、同ジ国連続シテ出ナイヨウ避ケルヨ（１国シカ無イ地域トカハ避ケル対象外ダカラ）
+      if(country && usedCountries.has(country)) continue;
+      if(country) usedCountries.add(country);
+      return {lat, lon, name: '（陸地）'};
+    }
+    const pool = mode==='japan' ? FALLBACK_JAPAN : FALLBACK_WORLD;
+    const p = pool[Math.floor(Math.random()*pool.length)];
+    return {lat:p[0], lon:p[1], name:'（field-notebook fallback）'};
+  }
+
+  // むずかしい用ノ追加都市データ、必要ニナッタ時ダケコッソリ読込ムヨ（軽量化ノタメダカラ）
+  let hardCityDataPromise = null;
+  function ensureHardCityData(){
+    if(typeof CITIES_WORLD_HARD !== 'undefined') return Promise.resolve();
+    if(hardCityDataPromise) return hardCityDataPromise;
+    hardCityDataPromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'cities_data_hard.js';
+      s.onload = () => resolve();
+      s.onerror = () => { console.warn('むずかしい用都市データ、読込ミ失敗シタヨ。通常データデ続行スルネ'); resolve(); };
+      document.head.appendChild(s);
+    });
+    return hardCityDataPromise;
+  }
+
+  // 都市モード：GeoNamesベースの都市リストから選ブヨ。揺らした先が海ダッタラ、陸地マスクで陸地見ツカルマデ揺らし直すダカラ
+  function getRandomCityPoint(mode){
+    let pool;
+    if(megaMode && typeof CITIES_WORLD_MEGA !== 'undefined'){
+      // 大都市のみ（世界）／全市町村（日本）モードダカラ、コッチ優先スルヨ
+      pool = mode==='japan' ? CITIES_JAPAN_ALL : CITIES_WORLD_MEGA;
+    } else {
+      // むずかしい設定ダト、追加データ（小サイ町モ入ッタヤツ）読込ミ済ミナラソッチ優先シテ使ウヨ
+      const useHard = difficulty === 'hard' && typeof CITIES_WORLD_HARD !== 'undefined';
+      if(useHard){
+        pool = mode==='japan' ? CITIES_JAPAN_HARD : CITIES_WORLD_HARD;
+      } else {
+        pool = mode==='japan' ? CITIES_JAPAN : CITIES_WORLD;
+      }
+    }
+    if(mode === 'region' && selectedRegions.length > 0){
+      // 地域選択モードダカラ、選バレタ地域ノ国ダケニ絞リ込ムヨ
+      const filtered = pool.filter(c => selectedRegions.includes(COUNTRY_TO_REGION[c[3]]));
+      if(filtered.length > 0) pool = filtered; // 該当ナシナラ、元ノ世界プールノまま使うヨ（安全策ダカラ）
+    }
+    // 同ジ都市、二回出ナイヨウ、モウ使ッタ都市ハ避ケルヨ（プール全部使イ切ッタラ、諦メテ重複許ストコロダケ例外ダヨ）。
+    // 世界モードダケ、同ジ国、連続シテ出ナイヨウモ避ケルヨ（日本モード・地域モードハ対象外ダカラ）
+    let c, key, tries = 0;
+    do{
+      c = pool[Math.floor(Math.random()*pool.length)];
+      key = c[0] + ',' + c[1];
+      tries++;
+    } while(
+      (usedCityKeys.has(key) || (mode==='world' && usedCountries.has(c[3])))
+      && tries < 50 && usedCityKeys.size < pool.length
+    );
+    usedCityKeys.add(key);
+    if(mode==='world') usedCountries.add(c[3]);
+
+    // 揺らし半径（km単位）。モードによって変えるヨ：
+    // ・世界の大都市モード（人口50万人以上ダケ）→ 都市どうし間隔広いカラ、思いッきり100km
+    // ・日本の大都市モード（実ハ全市町村ダカラ隣が近イ）→ 控エめに20km
+    // ・通常の都市モード（世界／日本とも小さい町も入ってる）→ ちょっとだけ広げて6km
+    let jitterHalfWidthKm;
+    if(megaMode){
+      jitterHalfWidthKm = (mode === 'japan') ? 20 : 100;
+    } else {
+      jitterHalfWidthKm = 6;
+    }
+    // 緯度によって経度1度あたりのkmが変わるカラ、換算しとくヨ（極に近いトコで割り算爆発しないヨウ下限つけるダカラ）
+    const kmPerDegLat = 111;
+    const kmPerDegLon = 111 * Math.max(Math.cos(c[0]*Math.PI/180), 0.15);
+
+    // 揺らした先が海だったら、揺らし幅を狭めながら何回か引き直すヨ（陸地マスクで一瞬判定ダカラ、通信要らないヨ）
+    for(let i=0;i<6;i++){
+      const shrink = 1 - i*0.15; // 引き直すたびに揺れ幅を狭くしていくダカラ
+      const jitterLat = (Math.random()-0.5)*2 * (jitterHalfWidthKm/kmPerDegLat) * shrink;
+      const jitterLon = (Math.random()-0.5)*2 * (jitterHalfWidthKm/kmPerDegLon) * shrink;
+      const lat = c[0]+jitterLat, lon = c[1]+jitterLon;
+      if(isLandAt(lat, lon)) return {lat, lon, name: c[2]};
+    }
+    // 6回とも海だったら、都市の元の座標（揺らし無し）をソノまま使うヨ。ココはほぼ確実に陸地ダカラ
+    return {lat: c[0], lon: c[1], name: c[2]};
+  }
+
+  // 通常モード／都市モード、どっち使うかココで振り分けるヨ
+  async function getRoundPoint(mode, zoom){
+    if(cityMode){
+      if(difficulty === 'hard') await ensureHardCityData();
+      return getRandomCityPoint(mode);
+    }
+    return await getRandomPoint(mode, zoom);
+  }
+
+  // ランキングは「エリア×都市モードの有無」で分けるヨ（難易度・ラウンド数まで分けると細かすぎるカラ、今はコレだけダカラ）
+  function getRankingCategory(){
+    return `${mode}_${cityMode ? 'city' : 'full'}`;
+  }
+  const CATEGORY_LABELS = {
+    world_full: '世界（通常）',
+    world_city: '世界（都市モード）',
+    japan_full: '日本（通常）',
+    japan_city: '日本（都市モード）'
+  };
+
+
+  function setMapStyle(key){
+    if(!MAP_STYLES[key]) return;
+    currentStyleKey = key;
+    if(mainTileLayer) mainMap.removeLayer(mainTileLayer);
+    const s = MAP_STYLES[key];
+    mainTileLayer = L.tileLayer(s.url, {
+      subdomains: s.subdomains, maxZoom: s.maxZoom,
+      maxNativeZoom: s.maxNativeZoom, attribution: s.attribution
+    }).addTo(mainMap);
+    document.querySelectorAll('#styleSwitcher .swBtn').forEach(b=>{
+      b.classList.toggle('active', b.dataset.style === key);
+    });
+  }
+
+  // ---------- map init ----------
+  function initMaps(){
+    // 枠、目安トシテハ残スケド、「戻す動き」自体ハ完全ニ無クスヨ（0ニスルト抵抗・押シ戻シ、両方ナクナルダカラ）
+    mainMap = L.map('mainMap', {zoomControl:true, worldCopyJump:false}).setView([20,0],2);
+    setMapStyle('voyager');
+    L.control.scale({position:'topleft', metric:true, imperial:false, maxWidth:150}).addTo(mainMap);
+
+    guessMap = L.map('guessMap', {zoomControl:false, worldCopyJump:true}).setView([20,0],1);
+    L.tileLayer(LABEL_TILE, {subdomains:'abcd', maxZoom:18, attribution:CARTO_ATTR}).addTo(guessMap);
+    guessMap.on('click', onGuessClick);
+
+    resultMap = L.map('resultMap', {zoomControl:false, dragging:false, scrollWheelZoom:false, doubleClickZoom:false}).setView([20,0],1);
+    L.tileLayer(LABEL_TILE, {subdomains:'abcd', maxZoom:18, attribution:CARTO_ATTR}).addTo(resultMap);
+
+    document.querySelectorAll('#styleSwitcher .swBtn').forEach(btn=>{
+      btn.addEventListener('click', ()=> setMapStyle(btn.dataset.style));
+    });
+  }
+
+  function onGuessClick(e){
+    // 経度、-180〜180度ノ範囲ニ正規化スルヨ（回答マップ、世界ガ横ニ繰リ返ス設定ダカラ、
+    // 二枚目・三枚目ノ地図クリックスルト、経度ガ180度超エチャウ。ソレダト距離計算ガ狂ウカラ、ココデ揃エルヨ）
+    const normalizedLatLng = L.latLng(e.latlng.lat, ((e.latlng.lng + 180) % 360 + 360) % 360 - 180);
+    guessLatLng = normalizedLatLng;
+    if(guessMarker) guessMap.removeLayer(guessMarker);
+    guessMarker = L.circleMarker(e.latlng, {radius:7, color:'#a8324a', fillColor:'#a8324a', fillOpacity:0.9, weight:2}).addTo(guessMap);
+    $('guessCoord').textContent = `緯度 ${normalizedLatLng.lat.toFixed(2)}, 経度 ${normalizedLatLng.lng.toFixed(2)}`;
+    $('guessBtn').disabled = false;
+  }
+
+  function clearTimers(){
+    if(countdownInterval){ clearInterval(countdownInterval); countdownInterval=null; }
+    $('timerStat').classList.remove('warn');
+  }
+
+  function startTimerForRound(){
+    clearTimers();
+    if(timeSetting === 'unlimited'){
+      $('timerStat').classList.add('hidden');
+      return;
+    }
+    // 5秒・10秒・30秒、ぜんぶ「見る時間＋答える時間」込みの単一カウントダウンにするヨ
+    $('timerStat').classList.remove('hidden');
+    secondsLeft = parseInt(timeSetting, 10);
+    $('timerVal').textContent = secondsLeft;
+    countdownInterval = setInterval(()=>{
+      secondsLeft -= 1;
+      $('timerVal').textContent = secondsLeft;
+      if(secondsLeft <= 3) $('timerStat').classList.add('warn');
+      if(secondsLeft <= 0){
+        clearTimers();
+        submitGuess(true); // 時間切れ、その時点のピンで自動決定するヨ
+      }
+    }, 1000);
+  }
+
+  // ---------- round flow ----------
+  async function startRound(){
+    clearTimers();
+    $('resultPanel').style.display = 'none';
+    $('guessPanel').classList.remove('hidden');
+    // 地図合わセ処理する間ハ、必ズ開イタ状態（非表示ジャナイ）ニしとくヨ。
+    // 非表示（display:none）ノ間ハ地図ノ大キサ0ノままダカラ、fitBoundsガ変ナ場所ニ飛ブ原因ニなるダヨ
+    // （「大きい地図」の状態ハ、ここではイジらズ、ソノまま保持スルヨ）
+    $('guessPanel').classList.remove('collapsed');
+    syncGuessPanelBtn();
+
+    $('loadingPanel').style.display = 'flex';
+    mainMap.setMinZoom(0);
+    $('guessBtn').disabled = true;
+    $('guessCoord').textContent = 'まだピンが立ってないヨ';
+
+    if(guessMarker){ guessMap.removeLayer(guessMarker); guessMarker=null; }
+    guessLatLng = null;
+    guessMap.setView([20,0], 1);
+    // パネルのサイズがちゃんと確定してから合わせる（0サイズノ時ニ計算スルト変な場所ニ変な倍率デ飛ブカラ）ダヨ
+    waitForMapSize(guessMap, () => {
+      guessMap.invalidateSize();
+      if(mode === 'japan'){
+        // 日本モードダカラ、回答マップも最初カラ日本ヘンヲ映スヨ
+        guessMap.fitBounds([[24, 122], [46, 146]], {padding:[8,8]});
+      } else if(mode === 'region' && selectedRegions.length > 0){
+        // 地域選択モードダカラ、選バレタ地域全部入ル範囲ニ合わせるヨ
+        let unionBounds = null;
+        selectedRegions.forEach(key => {
+          const b = REGION_BOUNDS[key];
+          if(!b) return;
+          const lo = Math.min(b[1], b[3]), hi = Math.max(b[1], b[3]);
+          const bounds = L.latLngBounds([b[0], lo], [b[2], hi]);
+          unionBounds = unionBounds ? unionBounds.extend(bounds) : bounds;
+        });
+        if(unionBounds) guessMap.fitBounds(unionBounds, {padding:[8,8]});
+      }
+      // 地図ノ表示、決マッタ後デ、スマホナラここデたたムヨ（見タ目ハ隠れても、中身ノビュー状態ハ保持サレルカラ大丈夫ダヨ）
+      if(isMobile()){
+        $('guessPanel').classList.add('collapsed');
+        syncGuessPanelBtn();
+      }
+    });
+
+
+    let zoom, pt;
+
+    if(sharedRounds){
+      // 共有サレタ問題ダカラ、ランダム生成ジャナクテ、コッチヲソノまま使うヨ
+      const r = sharedRounds[round-1];
+      pt = {lat: r[0], lon: r[1], name: '（共有された問題）'};
+      zoom = r[2];
+    } else if(prefetchedRound && prefetchedRound.round === round){
+      // 先読み済みダカラ、待たずにソノまま使うヨ
+      zoom = prefetchedRound.zoom;
+      pt = prefetchedRound.pt;
+      prefetchedRound = null;
+    } else if(prefetchPromise && prefetchPromise.forRound === round){
+      // 先読み中ダッタラ、終わるのを待つヨ（普通に読むよりは早く終わるハズダカラ）
+      const result = await prefetchPromise;
+      zoom = result.zoom;
+      pt = result.pt;
+      prefetchPromise = null;
+    } else {
+      // 先読みが間に合ッテなかったパターン、今まで通りココで取得するヨ
+      const range = ZOOM_CONFIG[difficulty][mode==='japan' ? 'japan' : 'world'];
+      zoom = range[0] + Math.floor(Math.random()*(range[1]-range[0]+1));
+      pt = await getRoundPoint(mode, zoom);
+    }
+    actualLatLng = pt;
+    currentZoom = zoom; // シェア用に覚えとくヨ
+
+    mainMap.setView([pt.lat, pt.lon], zoom, {animate:false});
+    setTimeout(()=>{
+      mainMap.invalidateSize();
+      mainMap.setMinZoom(zoom);
+      // 動カセル範囲ハ、最初カラ決マッテル「出題範囲」ソノまま（広ゲナイ）ダヨ。
+      // 画面ノ形（すまほノ縦長トカ）デ最初収マラナイ部分ハ、動カセバ見レルヨウニナルダケダヨ
+      const {degLat, degLon} = estimateHalfExtentDegForBounds(zoom, pt.lat);
+      const revealBounds = L.latLngBounds(
+        [pt.lat - degLat, pt.lon - degLon],
+        [pt.lat + degLat, pt.lon + degLon]
+      );
+      mainMap.options.maxBoundsViscosity = 1.0;
+      mainMap.setMaxBounds(revealBounds);
+    }, 60);
+
+    $('loadingPanel').style.display = 'none';
+
+    $('roundVal').textContent = `${round} / ${totalRounds}`;
+    $('scoreVal').textContent = totalScore;
+
+    startTimerForRound();
+
+    // 今の問題を出したついでに、次の問題をコッソリ裏で先読みしておくヨ（間に合えばラウンド遷移が一瞬で済むダカラ）
+    schedulePrefetch();
+  }
+
+  function schedulePrefetch(){
+    if(sharedRounds) return; // 共有問題ダト座標固定済ミダカラ、先読み不要ダヨ
+    const nextRoundNum = round + 1;
+    if(nextRoundNum > totalRounds) return; // もう次が無いダカラ、先読み不要ダヨ
+    const range = ZOOM_CONFIG[difficulty][mode==='japan' ? 'japan' : 'world'];
+    const zoom = range[0] + Math.floor(Math.random()*(range[1]-range[0]+1));
+    const p = getRoundPoint(mode, zoom).then(pt => {
+      const result = {pt, zoom};
+      if(prefetchPromise && prefetchPromise.forRound === nextRoundNum){
+        prefetchedRound = {round: nextRoundNum, zoom, pt};
+      }
+      return result;
+    });
+    p.forRound = nextRoundNum;
+    prefetchPromise = p;
+  }
+
+  function submitGuess(autoSubmitted){
+    clearTimers();
+    if(!actualLatLng) return;
+    if(!guessLatLng && !autoSubmitted) return; // 手動クリック時はピン無しなら何もしないヨ
+
+    let dist = null, pts = 0;
+    if(guessLatLng){
+      dist = haversine(guessLatLng.lat, guessLatLng.lng, actualLatLng.lat, actualLatLng.lon);
+      pts = scoreFromDistance(dist, mode);
+      totalScore += pts;
+      addXP(pts); // 経験値ニも足シテ、地域解放ノ元ニするヨ
+    }
+
+    // 結果一覧・Googleマップリンク・問題共有用ニ、コノラウンドノ記録ヲ残スヨ
+    roundHistory.push({
+      round,
+      actual: {lat: actualLatLng.lat, lon: actualLatLng.lon, name: actualLatLng.name},
+      guess: guessLatLng ? {lat: guessLatLng.lat, lon: guessLatLng.lng} : null,
+      dist, pts, zoom: currentZoom
+    });
+
+    $('guessPanel').classList.add('hidden');
+    $('resultPanel').style.display = 'block';
+    $('resultPanel').classList.remove('collapsed');
+    $('resultCollapseBtn').textContent = '▼';
+    $('resultCollapseBtn').title = '折りたたむ';
+    $('distText').textContent = guessLatLng
+      ? (dist < 1 ? '1km未満（大当たり！）' : `約 ${dist.toFixed(0)} km`)
+      : 'ピンが立たなかったヨ';
+    $('roundScoreText').textContent = `${pts} 点`;
+    if(cityMode && actualLatLng.name){
+      $('cityNameRow').style.display = 'flex';
+      $('cityNameText').textContent = actualLatLng.name;
+    } else {
+      $('cityNameRow').style.display = 'none';
+    }
+    $('scoreVal').textContent = totalScore;
+
+    setTimeout(()=>{
+      resultMap.invalidateSize();
+      // 前のラウンドの残りカスが表示され続けるバグ、コレで直すヨ。毎回必ずマーカーを消してから引き直すヨ
+      if(actualMarker){ resultMap.removeLayer(actualMarker); actualMarker=null; }
+      if(resultLine){ resultMap.removeLayer(resultLine); resultLine=null; }
+      if(resultMap._guessDot){ resultMap.removeLayer(resultMap._guessDot); resultMap._guessDot=null; }
+
+      actualMarker = L.circleMarker([actualLatLng.lat, actualLatLng.lon], {radius:6, color:'#4c6b52', fillColor:'#4c6b52', fillOpacity:0.9}).addTo(resultMap);
+
+      if(guessLatLng){
+        const bounds = L.latLngBounds([guessLatLng, [actualLatLng.lat, actualLatLng.lon]]);
+        resultMap.fitBounds(bounds, {padding:[30,30], maxZoom:8});
+        const guessDot = L.circleMarker(guessLatLng, {radius:6, color:'#a8324a', fillColor:'#a8324a', fillOpacity:0.9}).addTo(resultMap);
+        resultLine = L.polyline([guessLatLng, [actualLatLng.lat, actualLatLng.lon]], {color:'#a8823f', weight:2, dashArray:'4,5'}).addTo(resultMap);
+        resultMap._guessDot = guessDot;
+      } else {
+        // ピンが無い時は、せめて正解の場所だけでもチャンと見せるヨ
+        resultMap.setView([actualLatLng.lat, actualLatLng.lon], 5);
+      }
+    }, 60);
+  }
+
+  function nextRound(){
+    round += 1;
+    if(round > totalRounds){
+      showFinal();
+    } else {
+      startRound();
+    }
+  }
+
+  function showFinal(){
+    clearTimers();
+    $('resultPanel').style.display = 'none';
+    $('guessPanel').classList.add('hidden');
+    $('statsBar').classList.add('hidden');
+    $('styleSwitcher').classList.add('hidden');
+    const avg = Math.round(totalScore / totalRounds);
+    let comment;
+    if(avg >= 4000) comment = 'すごいヨ！アナタは歩く地図帳ダカラ！';
+    else if(avg >= 2500) comment = 'なかなかの地理センスダネ！ハイハイー、上出来ダヨ！';
+    else if(avg >= 1000) comment = 'まあまあダカラ、もう少し海岸線をよく見ル練習するとイイヨ。';
+    else comment = 'アーッ！次はもっと地図をよーく見てから決めるとイイダカラ！';
+    $('finalSummary').textContent = `合計スコア: ${totalScore} 点（${totalRounds}ラウンド 平均 ${avg} 点）。${comment}`;
+    $('finalPanel').classList.remove('hidden');
+
+    // ランキング機能、設定済ミノ時ダケ登録欄見セルヨ
+    if(rankingEnabled){
+      $('rankingSubmitRow').classList.remove('hidden');
+      $('rankingCategoryNote').textContent = `カテゴリ：${CATEGORY_LABELS[getRankingCategory()] || getRankingCategory()}`;
+      const savedName = localStorage.getItem('mapguess_name');
+      if(savedName) $('rankingNameInput').value = savedName;
+      $('rankingSubmitStatus').textContent = '';
+      $('rankingSubmitBtn').disabled = false;
+    } else {
+      $('rankingSubmitRow').classList.add('hidden');
+    }
+  }
+
+  // ---------- ランキング機能 ----------
+  async function submitScore(){
+    if(!rankingEnabled || !db) return;
+    let name = $('rankingNameInput').value.trim();
+    if(!name) name = '名無しさん';
+    name = name.slice(0, 20); // 長すぎる名前、切っちゃうヨ
+    localStorage.setItem('mapguess_name', name);
+    $('rankingSubmitBtn').disabled = true;
+    $('rankingSubmitStatus').textContent = '登録チュウ...';
+    try{
+      await db.collection('scores').add({
+        name,
+        score: totalScore,
+        category: getRankingCategory(),
+        rounds: totalRounds,
+        ts: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      $('rankingSubmitStatus').textContent = '登録できたヨ！';
+      showRanking(getRankingCategory());
+    }catch(e){
+      console.warn('スコア登録失敗シタヨ', e);
+      $('rankingSubmitStatus').textContent = '登録失敗シタヨ、通信状況確認シテネ';
+      $('rankingSubmitBtn').disabled = false;
+    }
+  }
+
+  // ---------- ラウンド結果一覧（Googleマップリンク付き） ----------
+  // ---------- 共有URL機能 ----------
+  function baseUrl(){
+    return location.origin + location.pathname;
+  }
+
+  // 「同じ問題」を共有スルURL（座標＋ズームを埋め込ムダカラ、開いた人ハ全く同じラウンド出るヨ）
+  function buildQuizShareUrl(){
+    const payload = {
+      v: 1,
+      mode,
+      timeSetting,
+      rounds: roundHistory.map(r => [
+        Math.round(r.actual.lat*10000)/10000,
+        Math.round(r.actual.lon*10000)/10000,
+        r.zoom
+      ])
+    };
+    const b64 = btoa(JSON.stringify(payload));
+    return `${baseUrl()}?quiz=${encodeURIComponent(b64)}`;
+  }
+
+  // 「スコアだけ」共有スルURL（座標ハ入レナイ、結果報告用ダヨ）
+  function buildResultShareUrl(){
+    const avg = Math.round(totalScore / totalRounds);
+    const payload = {v:1, mode, difficulty, cityMode, megaMode, totalRounds, score: totalScore, avg};
+    const b64 = btoa(JSON.stringify(payload));
+    return `${baseUrl()}?result=${encodeURIComponent(b64)}`;
+  }
+
+  function openSharePanel(){
+    $('shareQuizUrlInput').value = buildQuizShareUrl();
+    $('shareScoreUrlInput').value = buildResultShareUrl();
+    $('sharePanel').classList.remove('hidden');
+  }
+
+  async function copyToClipboard(text, statusEl){
+    try{
+      await navigator.clipboard.writeText(text);
+      statusEl.textContent = 'コピーシタヨ！';
+    }catch(e){
+      statusEl.textContent = 'コピー失敗シタヨ、手動デ選択シテネ';
+    }
+    setTimeout(()=>{ statusEl.textContent=''; }, 2500);
+  }
+
+  // ページ読込み時、URLニ共有データガ付イテナイカ確認スルヨ
+  function parseSharedUrlParams(){
+    const params = new URLSearchParams(location.search);
+    if(params.has('quiz')){
+      try{
+        const payload = JSON.parse(atob(decodeURIComponent(params.get('quiz'))));
+        if(payload && payload.v===1 && Array.isArray(payload.rounds) && payload.rounds.length>0){
+          sharedRounds = payload.rounds;
+          sharedMeta = {mode: payload.mode, timeSetting: payload.timeSetting};
+        }
+      }catch(e){ console.warn('共有問題ノ読込ミ失敗シタヨ', e); }
+    }
+    if(params.has('result')){
+      try{
+        sharedResultInfo = JSON.parse(atob(decodeURIComponent(params.get('result'))));
+      }catch(e){ console.warn('共有結果ノ読込ミ失敗シタヨ', e); }
+    }
+  }
+
+  function applySharedBannerToStartPanel(){
+    if(sharedRounds){
+      $('sharedQuizBanner').classList.remove('hidden');
+      $('sharedQuizBannerText').textContent = `🎯 共有サレタ問題ガ届イテルヨ！（${sharedRounds.length}ラウンド）`;
+    }
+    if(sharedResultInfo){
+      $('sharedResultBanner').classList.remove('hidden');
+      const r = sharedResultInfo;
+      $('sharedResultBannerText').textContent = `🏅 共有サレタ結果：${r.score}点（${r.totalRounds}ラウンド、平均${r.avg}点）`;
+    }
+  }
+
+  // ---------- 経験値・地域解放システム ----------
+  function loadProgress(){
+    totalXP = parseInt(localStorage.getItem('mapguess_totalxp') || '0', 10) || 0;
+    try{
+      unlockedRegions = new Set(JSON.parse(localStorage.getItem('mapguess_unlocked_regions') || '[]'));
+    }catch(e){ unlockedRegions = new Set(); }
+  }
+  function saveProgress(){
+    localStorage.setItem('mapguess_totalxp', String(totalXP));
+    localStorage.setItem('mapguess_unlocked_regions', JSON.stringify(Array.from(unlockedRegions)));
+  }
+  function addXP(pts){
+    if(pts <= 0) return;
+    totalXP += pts;
+    saveProgress();
+  }
+  // 解放チャンス、何回貯マッタカ計算スルヨ（最初15000点、ソノ後段々必要点数増エテイク累進方式ダカラ）
+  function unlockChoicesEarnedFromXP(xp){
+    let count = 0, total = 0, step = 15000;
+    while(total + step <= xp){
+      total += step; step += 2500; count++;
+    }
+    return count;
+  }
+  function xpNeededForNextChoice(xp){
+    let total = 0, step = 15000;
+    while(total + step <= xp){ total += step; step += 2500; }
+    return total + step;
+  }
+  function availableUnlockChoices(){
+    const earned = 1 + unlockChoicesEarnedFromXP(totalXP); // 最初ノ1回ハ無料ダヨ
+    return Math.max(0, earned - unlockedRegions.size);
+  }
+
+  // トップ画面：解放済ミノ地域ダケ、チェックボックスデ選ベルヨウニスルヨ（解放操作ハステータス画面ノ方ダヨ）
+  function renderRegionPicker(){
+    const container = $('regionCheckboxes');
+    container.innerHTML = '';
+    const lockedCount = REGION_ORDER.length - unlockedRegions.size;
+    $('regionUnlockHint').textContent = lockedCount > 0
+      ? `🔒 未解放ノ地域、あと${lockedCount}コアルヨ。「📊 ステータス」画面デ解放デキルダカラ`
+      : '';
+    REGION_ORDER.forEach(key => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex; align-items:center; gap:6px; min-height:24px;';
+      if(unlockedRegions.has(key)){
+        row.innerHTML = `<label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin:0; min-width:0; flex:1;">
+          <input type="checkbox" class="regionCheckbox" value="${key}" style="width:auto; flex-shrink:0;">
+          <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${REGION_LABELS[key]}</span>
+        </label>`;
+      } else {
+        row.innerHTML = `<span style="opacity:0.35; min-width:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🔒 ${REGION_LABELS[key]}</span>`;
+      }
+      container.appendChild(row);
+    });
+  }
+
+  // ステータス画面：鍵アイコン＋解放ボタンノ、ソレデ解放スル方ノリストダヨ
+  function renderStatusRegionList(){
+    const container = $('statusRegionList');
+    container.innerHTML = '';
+    const choices = availableUnlockChoices();
+    $('statusRegionUnlockText').textContent = choices > 0
+      ? `🔓 解放チャンス：${choices}回分アルヨ！好きナ地域、選んでネ`
+      : `次ノ解放マデ、あと${xpNeededForNextChoice(totalXP)-totalXP}点ダヨ`;
+    REGION_ORDER.forEach(key => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:28px;';
+      if(unlockedRegions.has(key)){
+        row.innerHTML = `<span style="min-width:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">✅ ${REGION_LABELS[key]}</span>`;
+      } else if(choices > 0){
+        row.innerHTML = `<span style="opacity:0.6; min-width:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🔒 ${REGION_LABELS[key]}</span>
+          <button type="button" class="btn unlockRegionBtn" data-region="${key}" style="width:auto; display:inline-block; flex-shrink:0; padding:4px 12px; margin:0; font-size:11px;">解放</button>`;
+      } else {
+        row.innerHTML = `<span style="opacity:0.4; min-width:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🔒 ${REGION_LABELS[key]}</span>`;
+      }
+      container.appendChild(row);
+    });
+    container.querySelectorAll('.unlockRegionBtn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.region;
+        if(availableUnlockChoices() > 0 && !unlockedRegions.has(key)){
+          unlockedRegions.add(key);
+          saveProgress();
+          renderRegionPicker(); // トップ画面ノ選択肢モ更新シトクヨ
+          showProgressMap(); // コッチガリストモ地図モまとめて描き直すヨ
+        }
+      });
+    });
+  }
+
+  // ---------- 進捗マップ（解放状況ヲ世界地図デ見ルヤツ） ----------
+  let progressMap = null;
+  let progressLayer = null;
+  let worldGeoJsonCache = null; // 一回変換シタラ、キャッシュしとくヨ
+  let worldMapAssetsPromise = null;
+
+  // topojson-client（変換ライブラリ）ト、国境データ、両方ローカルファイルカラ読込ムヨ（CDN・通信、要ラナイヨ）
+  function ensureWorldMapAssets(){
+    if(typeof topojson !== 'undefined' && typeof WORLD_TOPOLOGY !== 'undefined') return Promise.resolve();
+    if(worldMapAssetsPromise) return worldMapAssetsPromise;
+    const loadScript = (src) => new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error(src + ' ノ読込ミ失敗シタヨ'));
+      document.head.appendChild(s);
+    });
+    worldMapAssetsPromise = Promise.all([
+      typeof topojson === 'undefined' ? loadScript('topojson-client.min.js') : Promise.resolve(),
+      typeof WORLD_TOPOLOGY === 'undefined' ? loadScript('world_topology.js') : Promise.resolve()
+    ]);
+    return worldMapAssetsPromise;
+  }
+
+  // 日付変更線（±180度）をまたぐ国（ロシアとか）ハ、ソノままダト地図ノ端カラ端マデ変ナ線ガ引カレチャウカラ、
+  // 座標ヲ繋ガリ良ク「アンラップ」（360度足シ引キシテ連続ニ）スルヨ
+  function unwrapAntimeridian(geo){
+    const fixRing = (ring) => {
+      for(let i=1;i<ring.length;i++){
+        while(ring[i][0] - ring[i-1][0] > 180) ring[i][0] -= 360;
+        while(ring[i-1][0] - ring[i][0] > 180) ring[i][0] += 360;
+      }
+    };
+    geo.features.forEach(f => {
+      if(!f.geometry) return;
+      if(f.geometry.type === 'Polygon'){
+        f.geometry.coordinates.forEach(fixRing);
+      } else if(f.geometry.type === 'MultiPolygon'){
+        f.geometry.coordinates.forEach(poly => poly.forEach(fixRing));
+      }
+    });
+    return geo;
+  }
+
+  async function loadWorldGeoJson(){
+    if(worldGeoJsonCache) return worldGeoJsonCache;
+    await ensureWorldMapAssets();
+    const geo = topojson.feature(WORLD_TOPOLOGY, WORLD_TOPOLOGY.objects.countries);
+    worldGeoJsonCache = unwrapAntimeridian(geo);
+    return worldGeoJsonCache;
+  }
+
+  function regionColorFor(key){
+    return unlockedRegions.has(key) ? '#4c8c4a' : '#a83a3a';
+  }
+
+  // 国境ポリゴン取レナカッタ時用ノ、大雑把な四角表示（フォールバックダヨ）
+  function drawRegionRectangles(){
+    REGION_ORDER.forEach(key => {
+      const b = REGION_BOUNDS[key];
+      if(!b) return;
+      const unlocked = unlockedRegions.has(key);
+      const color = regionColorFor(key);
+      const drawBox = (lo, hi) => {
+        const rect = L.rectangle([[b[0], lo],[b[2], hi]], {
+          color, weight:1, fillColor:color, fillOpacity: unlocked ? 0.45 : 0.25
+        }).addTo(progressMap);
+        rect._isRegionBox = true;
+        rect.bindTooltip(REGION_LABELS[key], {sticky:true});
+      };
+      if(b[1] > b[3]){
+        drawBox(b[1], 180);
+        drawBox(-180, b[3]);
+      } else {
+        drawBox(b[1], b[3]);
+      }
+    });
+  }
+
+  // ---------- 開発用：サンプル問題プレビュー ----------
+  let devPreviewMap = null;
+  async function runDevPreview(){
+    const btn = $('runDevPreviewBtn');
+    btn.disabled = true;
+
+    // 今ノ設定、いったん退避サセテカラ、プレビュー用ノ設定ニ切替エルヨ（生成後、必ズ元ニ戻スダカラ）
+    const prevMode = mode, prevCityMode = cityMode, prevMegaMode = megaMode, prevDifficulty = difficulty, prevSelectedRegions = selectedRegions;
+    const prevUsedCityKeys = usedCityKeys, prevUsedCountries = usedCountries;
+    usedCityKeys = new Set(); usedCountries = new Set(); // プレビューハ毎回マッサラナ状態カラ試スヨ
+
+    mode = $('modeSelect').value;
+    const styleVal = $('citySelect').value;
+    cityMode = styleVal !== 'random';
+    megaMode = styleVal === 'mega';
+    difficulty = $('difficultySelect').value;
+
+    if(mode === 'region'){
+      selectedRegions = Array.from(document.querySelectorAll('.regionCheckbox:checked')).map(el => el.value);
+      if(selectedRegions.length === 0){
+        $('devPreviewStatus').textContent = '地域モードダカラ、マズ地域選ンデネ！';
+        mode=prevMode; cityMode=prevCityMode; megaMode=prevMegaMode; difficulty=prevDifficulty; selectedRegions=prevSelectedRegions; usedCityKeys=prevUsedCityKeys; usedCountries=prevUsedCountries;
+        btn.disabled = false;
+        return;
+      }
+    }
+    if(difficulty === 'hard' && cityMode) await ensureHardCityData();
+
+    const count = parseInt($('devPreviewCount').value, 10);
+    const range = ZOOM_CONFIG[difficulty][mode==='japan' ? 'japan' : 'world'];
+    const results = [];
+
+    for(let i=0;i<count;i++){
+      $('devPreviewStatus').textContent = `生成中...（${i+1}/${count}）`;
+      const zoom = range[0] + Math.floor(Math.random()*(range[1]-range[0]+1));
+      let pt;
+      if(cityMode){
+        pt = getRandomCityPoint(mode);
+      } else {
+        pt = await getRandomPoint(mode, zoom);
+      }
+      results.push(pt);
+    }
+
+    // 設定、元ニ戻スヨ
+    mode=prevMode; cityMode=prevCityMode; megaMode=prevMegaMode; difficulty=prevDifficulty; selectedRegions=prevSelectedRegions; usedCityKeys=prevUsedCityKeys; usedCountries=prevUsedCountries;
+
+    $('devPreviewStatus').textContent = `${results.length}件、生成完了ダヨ`;
+    renderDevPreview(results);
+    btn.disabled = false;
+  }
+
+  function renderDevPreview(results){
+    if(!devPreviewMap){
+      devPreviewMap = L.map('devPreviewMapEl', {zoomControl:true, worldCopyJump:false}).setView([20,0],2);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', {
+        subdomains:'abcd', maxZoom:18, attribution:''
+      }).addTo(devPreviewMap);
+    }
+    waitForMapSize(devPreviewMap, () => {
+      devPreviewMap.invalidateSize();
+      if(devPreviewMap._markers) devPreviewMap._markers.forEach(m => devPreviewMap.removeLayer(m));
+      devPreviewMap._markers = [];
+      const latlngs = [];
+      results.forEach((pt, i) => {
+        const m = L.circleMarker([pt.lat, pt.lon], {radius:6, color:'#a8324a', fillColor:'#a8324a', fillOpacity:0.8, weight:1}).addTo(devPreviewMap);
+        m.bindTooltip(`#${i+1}${pt.name ? ' ' + pt.name : ''}`, {sticky:true});
+        devPreviewMap._markers.push(m);
+        latlngs.push([pt.lat, pt.lon]);
+      });
+      if(latlngs.length > 0){
+        devPreviewMap.fitBounds(L.latLngBounds(latlngs), {padding:[20,20], maxZoom:6});
+      }
+    });
+
+    $('devPreviewList').innerHTML = results.map((pt, i) =>
+      `<div style="padding:3px 0; border-bottom:1px solid rgba(168,130,63,0.2);">#${i+1}: ${pt.lat.toFixed(2)}, ${pt.lon.toFixed(2)}${pt.name ? ' — ' + pt.name : ''}</div>`
+    ).join('');
+  }
+
+
+  function showProgressMap(){
+    $('progressMapPanel').classList.remove('hidden');
+    $('progressMapSummary').textContent = `経験値：${totalXP}点／解放済ミ：${unlockedRegions.size}/${REGION_ORDER.length}地域ダヨ`;
+    renderStatusRegionList();
+    if(!progressMap){
+      progressMap = L.map('progressMapEl', {zoomControl:true, worldCopyJump:false}).setView([15,10], 1);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', {
+        subdomains:'abcd', maxZoom: 6, attribution: ''
+      }).addTo(progressMap);
+    }
+    waitForMapSize(progressMap, async () => {
+      progressMap.invalidateSize();
+      // 前回描イタ分、消してから描き直すヨ
+      if(progressLayer){ progressMap.removeLayer(progressLayer); progressLayer = null; }
+      progressMap.eachLayer(l => { if(l._isRegionBox) progressMap.removeLayer(l); });
+      try{
+        const geo = await loadWorldGeoJson();
+        progressLayer = L.geoJSON(geo, {
+          style: (feature) => {
+            const regionKey = NUMERIC_TO_REGION[parseInt(feature.id, 10)];
+            if(!regionKey) return {fillOpacity:0, weight:0, opacity:0}; // 該当ナシ（南極トカ）ハ透明ニするヨ
+            const unlocked = unlockedRegions.has(regionKey);
+            const color = regionColorFor(regionKey);
+            return {color, weight:0.6, fillColor:color, fillOpacity: unlocked ? 0.55 : 0.3};
+          },
+          onEachFeature: (feature, layer) => {
+            const regionKey = NUMERIC_TO_REGION[parseInt(feature.id, 10)];
+            if(regionKey) layer.bindTooltip(REGION_LABELS[regionKey], {sticky:true});
+          }
+        }).addTo(progressMap);
+      }catch(e){
+        console.warn('国境ポリゴン読込ミ失敗シタヨ、四角表示ニ切替エルネ', e);
+        drawRegionRectangles();
+        $('progressMapSummary').textContent += `（簡易表示中：${e.message || e}）`;
+      }
+    });
+  }
+
+  function mapsLink(lat, lon){
+    return `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+  }
+  function showRoundResults(){
+    $('roundResultsPanel').classList.remove('hidden');
+    if(roundHistory.length === 0){
+      $('roundResultsList').innerHTML = '<p style="opacity:0.7;">記録ナイヨ。マズ1回遊ンデネ。</p>';
+      return;
+    }
+    const rows = roundHistory.map(r => {
+      const distText = r.dist !== null ? (r.dist < 1 ? '1km未満' : `約${r.dist.toFixed(0)}km`) : 'ピン無し';
+      const nameText = r.actual.name && cityMode ? ` （${r.actual.name}）` : '';
+      const guessLink = r.guess
+        ? `<a href="${mapsLink(r.guess.lat, r.guess.lon)}" target="_blank" rel="noopener">自分のピン</a>`
+        : '<span style="opacity:0.6;">ピン無し</span>';
+      return `
+        <div class="roundResultRow">
+          <div class="rrTop">
+            <span>第${r.round}問${nameText}</span>
+            <span class="rrScore">${r.pts}点（${distText}）</span>
+          </div>
+          <div class="rrLinks">
+            <a href="${mapsLink(r.actual.lat, r.actual.lon)}" target="_blank" rel="noopener">正解の場所</a>
+            ${guessLink}
+          </div>
+        </div>`;
+    }).join('');
+    $('roundResultsList').innerHTML = rows;
+  }
+
+  async function showRanking(category){
+    if(!rankingEnabled || !db) return;
+    $('rankingPanel').classList.remove('hidden');
+    $('rankingList').innerHTML = '<li class="rankingLoading">読込ミチュウ...</li>';
+    $('rankingCategoryTitle').textContent = CATEGORY_LABELS[category] || category;
+    try{
+      const snap = await db.collection('scores')
+        .where('category', '==', category)
+        .orderBy('score', 'desc')
+        .limit(20)
+        .get();
+      if(snap.empty){
+        $('rankingList').innerHTML = '<li class="rankingLoading">まだ記録ナイヨ。アナタが一番乗りダカラ！</li>';
+        return;
+      }
+      const rows = [];
+      let rank = 1;
+      snap.forEach(doc => {
+        const d = doc.data();
+        const safeName = String(d.name || '名無しさん').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+        rows.push(`<li><span class="rankNum">${rank}</span><span class="rankName">${safeName}</span><span class="rankScore">${d.score} 点</span></li>`);
+        rank++;
+      });
+      $('rankingList').innerHTML = rows.join('');
+    }catch(e){
+      console.warn('ランキング取得失敗シタヨ', e);
+      $('rankingList').innerHTML = '<li class="rankingLoading">読込ミ失敗シタヨ、通信状況確認シテネ</li>';
+    }
+  }
+
+  // ---------- draggable & collapsible panels ----------
+  function makeDraggable(panelEl, handleEl){
+    let dragging=false, offsetX=0, offsetY=0;
+
+    function startDrag(e){
+      if(isMobile()) return; // スマホはボトムシート方式ダカラ、ドラッグは無効ニするヨ
+      if(e.target.closest('.collapseBtn')) return; // 折りたたみボタンはドラッグ対象外ダカラ
+      dragging = true;
+      const evt = e.touches ? e.touches[0] : e;
+      const rect = panelEl.getBoundingClientRect();
+      offsetX = evt.clientX - rect.left;
+      offsetY = evt.clientY - rect.top;
+      panelEl.style.right = 'auto';
+      panelEl.style.bottom = 'auto';
+      panelEl.style.left = rect.left + 'px';
+      panelEl.style.top = rect.top + 'px';
+      document.addEventListener('mousemove', onDrag);
+      document.addEventListener('touchmove', onDrag, {passive:false});
+      document.addEventListener('mouseup', endDrag);
+      document.addEventListener('touchend', endDrag);
+    }
+    function onDrag(e){
+      if(!dragging) return;
+      const evt = e.touches ? e.touches[0] : e;
+      let newLeft = evt.clientX - offsetX;
+      let newTop = evt.clientY - offsetY;
+      const maxLeft = Math.max(4, window.innerWidth - panelEl.offsetWidth - 4);
+      const maxTop = Math.max(4, window.innerHeight - panelEl.offsetHeight - 4);
+      newLeft = Math.min(Math.max(4, newLeft), maxLeft);
+      newTop = Math.min(Math.max(4, newTop), maxTop);
+      panelEl.style.left = newLeft + 'px';
+      panelEl.style.top = newTop + 'px';
+      if(e.cancelable) e.preventDefault();
+    }
+    function endDrag(){
+      dragging = false;
+      document.removeEventListener('mousemove', onDrag);
+      document.removeEventListener('touchmove', onDrag);
+      document.removeEventListener('mouseup', endDrag);
+      document.removeEventListener('touchend', endDrag);
+    }
+    handleEl.addEventListener('mousedown', startDrag);
+    handleEl.addEventListener('touchstart', startDrag, {passive:true});
+  }
+
+  function makeCollapsible(panelEl, btnEl, headEl, onExpand){
+    function toggle(){
+      const collapsed = panelEl.classList.toggle('collapsed');
+      btnEl.textContent = collapsed ? '▲' : '▼';
+      btnEl.title = collapsed ? '広げる' : '折りたたむ';
+      if(!collapsed && onExpand){
+        setTimeout(onExpand, 300); // 展開アニメの後に地図サイズ再計算するヨ
+      }
+    }
+    btnEl.addEventListener('click', (e)=>{ e.stopPropagation(); toggle(); });
+    // スマホでは、つまみ（ヘッダーバー）全体をタップしても開閉できるようにするヨ（ボトムシートっぽくするタメダカラ）
+    headEl.addEventListener('click', (e)=>{
+      if(!isMobile()) return;
+      if(e.target.closest('.collapseBtn')) return; // ボタン自身のクリックと二重発火しないようにするヨ
+      toggle();
+    });
+  }
+
+  // 回答マップ（guessPanel）専用ダヨ：非表示（バー）／小さい地図／大きい地図の3段階でグルグル切り替えるヨ
+  function syncGuessPanelBtn(){
+    const btn = $('guessCollapseBtn');
+    const panel = $('guessPanel');
+    if(panel.classList.contains('collapsed')){
+      btn.textContent = '▲'; btn.title = '広げる';
+    } else if(panel.classList.contains('large')){
+      btn.textContent = '▼'; btn.title = 'たたむ';
+    } else {
+      btn.textContent = '⤢'; btn.title = 'もっと大きく';
+    }
+  }
+  function makeGuessPanelToggle(panelEl, btnEl, headEl, onResize){
+    function cycle(){
+      // 非表示（collapsed）→ 小さい地図（何もナシ）→ 大きい地図（large）→ 非表示…の順にグルグルするヨ
+      if(panelEl.classList.contains('collapsed')){
+        panelEl.classList.remove('collapsed');
+        panelEl.classList.remove('large');
+      } else if(panelEl.classList.contains('large')){
+        panelEl.classList.remove('large');
+        panelEl.classList.add('collapsed');
+      } else {
+        panelEl.classList.add('large');
+      }
+      syncGuessPanelBtn();
+      if(onResize) setTimeout(onResize, 300);
+    }
+    btnEl.addEventListener('click', (e)=>{ e.stopPropagation(); cycle(); });
+    headEl.addEventListener('click', (e)=>{
+      if(!isMobile()) return;
+      if(e.target.closest('.collapseBtn')) return;
+      cycle();
+    });
+  }
+
+  // プレイ中のモード表示（出題エリア／出題スタイル／難易度／制限時間）ダヨ
+  function updateModeLabel(){
+    const areaLabel = mode === 'world' ? '世界' : mode === 'japan' ? '日本' : `地域(${selectedRegions.length}件)`;
+    const styleLabel = megaMode ? '大都市モード' : (cityMode ? '都市モード' : 'ランダム座標');
+    const diffLabel = difficulty === 'easy' ? 'かんたん' : difficulty === 'hard' ? 'むずかしい' : 'ふつう';
+    const timeLabel = timeSetting === 'unlimited' ? '無制限' : `${timeSetting}秒`;
+    $('modeVal').textContent = `${areaLabel}／${styleLabel}／${diffLabel}／${timeLabel}`;
+  }
+
+  // ---------- wiring ----------
+  window.addEventListener('load', () => {
+    initMaps();
+    parseSharedUrlParams();
+    applySharedBannerToStartPanel();
+
+    makeDraggable($('guessPanel'), $('guessPanel').querySelector('.ghead'));
+    makeDraggable($('resultPanel'), $('resultPanel').querySelector('.ghead'));
+    makeGuessPanelToggle($('guessPanel'), $('guessCollapseBtn'), $('guessPanel').querySelector('.ghead'), () => guessMap.invalidateSize());
+    makeCollapsible($('resultPanel'), $('resultCollapseBtn'), $('resultPanel').querySelector('.ghead'), () => resultMap.invalidateSize());
+
+    // ---------- 地域選択モードの準備 ----------
+    loadProgress();
+    renderRegionPicker();
+    $('modeSelect').addEventListener('change', () => {
+      const isRegion = $('modeSelect').value === 'region';
+      $('regionPickerRow').classList.toggle('hidden', !isRegion);
+      if(isRegion) renderRegionPicker(); // 開く度に最新の解放状況で描き直すヨ
+    });
+
+    function beginGame(){
+      round = 1; totalScore = 0; roundHistory = []; usedCityKeys = new Set(); usedCountries = new Set();
+      prefetchedRound = null; prefetchPromise = null;
+      $('startPanel').classList.add('hidden');
+      $('statsBar').classList.remove('hidden');
+      $('styleSwitcher').classList.remove('hidden');
+      updateModeLabel();
+      setTimeout(()=>{ mainMap.invalidateSize(); guessMap.invalidateSize(); }, 100);
+      startRound();
+    }
+
+    $('startBtn').addEventListener('click', () => {
+      mode = $('modeSelect').value;
+      const styleVal = $('citySelect').value;
+      cityMode = styleVal !== 'random';
+      megaMode = styleVal === 'mega';
+      difficulty = $('difficultySelect').value;
+      timeSetting = $('timeSelect').value;
+      totalRounds = parseInt($('roundsSelect').value, 10);
+      sharedRounds = null; // 通常スタートダカラ、共有問題ノ固定座標ハ使わナイヨ
+      if(mode === 'region'){
+        selectedRegions = Array.from(document.querySelectorAll('.regionCheckbox:checked')).map(el => el.value);
+        if(selectedRegions.length === 0){
+          alert('地域、少なくとも1つは選んデネ！');
+          return;
+        }
+      }
+      beginGame();
+    });
+
+    $('guessBtn').addEventListener('click', () => submitGuess(false));
+    $('nextBtn').addEventListener('click', nextRound);
+
+    $('restartBtn').addEventListener('click', () => {
+      $('finalPanel').classList.add('hidden');
+      $('startPanel').classList.remove('hidden');
+    });
+
+    // ---------- ランキング機能の配線 ----------
+    if(!rankingEnabled){
+      // 消スンジャナクテ、グレーアウトシテ「準備中」ッテワカルヨウニスルヨ
+      $('viewRankingFromStartBtn').disabled = true;
+      $('viewRankingFromStartBtn').textContent = '🏆 ランキング（準備中ダヨ）';
+      $('viewRankingBtn').disabled = true;
+      $('viewRankingBtn').textContent = '🏆 ランキング（準備中ダヨ）';
+    }
+    $('viewRankingFromStartBtn').addEventListener('click', () => {
+      // スタート画面デハ、今選バレテル設定カラカテゴリ推定スルヨ
+      const tempMode = $('modeSelect').value;
+      const tempCity = $('citySelect').value !== 'random';
+      showRanking(`${tempMode}_${tempCity ? 'city' : 'full'}`);
+    });
+    $('viewRankingBtn').addEventListener('click', () => showRanking(getRankingCategory()));
+    $('closeRankingBtn').addEventListener('click', () => $('rankingPanel').classList.add('hidden'));
+    $('viewRoundResultsBtn').addEventListener('click', showRoundResults);
+    $('closeRoundResultsBtn').addEventListener('click', () => $('roundResultsPanel').classList.add('hidden'));
+
+    // ---------- 共有機能の配線 ----------
+    $('openShareBtn').addEventListener('click', openSharePanel);
+    $('closeShareBtn').addEventListener('click', () => $('sharePanel').classList.add('hidden'));
+    $('viewStatusBtn').addEventListener('click', showProgressMap);
+    $('closeProgressMapBtn').addEventListener('click', () => $('progressMapPanel').classList.add('hidden'));
+    $('viewDevPreviewBtn').addEventListener('click', () => $('devPreviewPanel').classList.remove('hidden'));
+    $('closeDevPreviewBtn').addEventListener('click', () => $('devPreviewPanel').classList.add('hidden'));
+    $('runDevPreviewBtn').addEventListener('click', runDevPreview);
+    $('copyQuizUrlBtn').addEventListener('click', () => copyToClipboard($('shareQuizUrlInput').value, $('shareStatus')));
+    $('copyScoreUrlBtn').addEventListener('click', () => copyToClipboard($('shareScoreUrlInput').value, $('shareStatus')));
+
+    $('playSharedQuizBtn').addEventListener('click', () => {
+      // 共有された問題を使うヨ。プルダウンは触らず、直接コノ設定で始めるダケダヨ
+      mode = sharedMeta.mode;
+      timeSetting = sharedMeta.timeSetting;
+      cityMode = false; megaMode = false; // 座標固定済ミダカラ関係ナイヨ
+      difficulty = 'normal';
+      totalRounds = sharedRounds.length;
+      beginGame();
+    });
+    $('matchSharedSettingsBtn').addEventListener('click', () => {
+      // スコア共有ダカラ座標は入ってないヨ。設定だけ同じにするダケダヨ
+      const r = sharedResultInfo;
+      $('modeSelect').value = r.mode;
+      $('difficultySelect').value = r.difficulty;
+      $('citySelect').value = r.megaMode ? 'mega' : (r.cityMode ? 'city' : 'random');
+      const roundsOpt = Array.from($('roundsSelect').options).find(o => o.value === String(r.totalRounds));
+      if(roundsOpt) $('roundsSelect').value = String(r.totalRounds);
+      $('sharedResultBanner').classList.add('hidden');
+    });
+
+    // 窓ノ大キサ変ワッタ時（画面いっぱいニシタ時トカ）、地図ノサイズ再計算スルヨ
+    window.addEventListener('resize', () => {
+      mainMap.invalidateSize();
+      guessMap.invalidateSize();
+    });
+
+    $('rankingSubmitBtn').addEventListener('click', submitScore);
+  });
+})();
+</script>
+</body>
+</html>
