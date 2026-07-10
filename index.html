@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.56 - ラベル無し地図クイズ／国別判定オフライン化版</title>
+<title>地図ゲッサー v0.57 - ラベル無し地図クイズ／国別判定オフライン化版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -421,7 +421,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.56</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.57</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="modeStat"><span class="val" id="modeVal">-</span><span class="lbl">モード</span></div>
@@ -466,7 +466,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.56</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.57</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div id="sharedQuizBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
         <p id="sharedQuizBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
@@ -922,6 +922,29 @@
     return hardCityDataPromise;
   }
 
+  // 揺らした後の地点カラ、一番近イ都市（手持ちのデータ全部候補）ヲ探して名前を返すヨ。
+  // 「サッポロと出たのに実際は100km離れてて全然サッポロじゃない」問題ヲ直スタメダヨ
+  function findNearestNamedCity(lat, lon, mode){
+    const pools = [];
+    if(mode === 'japan'){
+      if(typeof CITIES_JAPAN_ALL !== 'undefined') pools.push(CITIES_JAPAN_ALL);
+      if(typeof CITIES_JAPAN !== 'undefined') pools.push(CITIES_JAPAN);
+      if(typeof CITIES_JAPAN_HARD !== 'undefined') pools.push(CITIES_JAPAN_HARD);
+    } else {
+      if(typeof CITIES_WORLD_MEGA !== 'undefined') pools.push(CITIES_WORLD_MEGA);
+      if(typeof CITIES_WORLD !== 'undefined') pools.push(CITIES_WORLD);
+      if(typeof CITIES_WORLD_HARD !== 'undefined') pools.push(CITIES_WORLD_HARD);
+    }
+    let best = null, bestDist = Infinity;
+    for(const arr of pools){
+      for(const c of arr){
+        const d = haversine(lat, lon, c[0], c[1]);
+        if(d < bestDist){ bestDist = d; best = c; }
+      }
+    }
+    return best ? best[2] : null;
+  }
+
   // 都市モード：GeoNamesベースの都市リストから選ブヨ。揺らした先が海ダッタラ、陸地マスクで陸地見ツカルマデ揺らし直すダカラ
   function getRandomCityPoint(mode){
     let pool;
@@ -976,7 +999,7 @@
       const jitterLat = (Math.random()-0.5)*2 * (jitterHalfWidthKm/kmPerDegLat) * shrink;
       const jitterLon = (Math.random()-0.5)*2 * (jitterHalfWidthKm/kmPerDegLon) * shrink;
       const lat = c[0]+jitterLat, lon = c[1]+jitterLon;
-      if(isLandAt(lat, lon)) return {lat, lon, name: c[2]};
+      if(isLandAt(lat, lon)) return {lat, lon, name: findNearestNamedCity(lat, lon, mode) || c[2]};
     }
     // 6回とも海だったら、都市の元の座標（揺らし無し）をソノまま使うヨ。ココはほぼ確実に陸地ダカラ
     return {lat: c[0], lon: c[1], name: c[2]};
