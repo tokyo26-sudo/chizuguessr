@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.59 - ラベル無し地図クイズ／国別判定オフライン化版</title>
+<title>地図ゲッサー v0.60 - ラベル無し地図クイズ／国別判定オフライン化版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -421,7 +421,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.59</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.60</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="modeStat"><span class="val" id="modeVal">-</span><span class="lbl">モード</span></div>
@@ -466,7 +466,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.59</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.60</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div id="sharedQuizBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
         <p id="sharedQuizBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
@@ -922,8 +922,9 @@
     return hardCityDataPromise;
   }
 
-  // 都市モード用：国ゴトニグループ化シテ、都市数の平方根デ重み付けスルヨ
-  // （単純ニ件数デ比べルト大国ばっかリ出ちゃうカラ、√デ差ヲ縮メテ小サイ国モ出やすクするタメダヨ）
+  // 都市モード用：国ゴトニグループ化シテ、都市数の0.25乗デ重み付けスルヨ
+  // （単純ニ件数デ比べルト大国ばっかリ出ちゃうカラ、指数ヲ弱メテ差ヲ縮メ、小サイ国モ出やすクするタメダヨ。
+  //  0.5乗（√）ダト弱すぎタカラ、0.25乗ニ強メタヨ）
   function groupCitiesByCountry(pool){
     const groups = new Map();
     for(const c of pool){
@@ -932,7 +933,7 @@
       groups.get(code).push(c);
     }
     const countries = [...groups.keys()];
-    const weights = countries.map(code => Math.sqrt(groups.get(code).length));
+    const weights = countries.map(code => Math.pow(groups.get(code).length, 0.25));
     const totalWeight = weights.reduce((a,b)=>a+b, 0);
     return {groups, countries, weights, totalWeight};
   }
