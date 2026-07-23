@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>地図ゲッサー v0.58 - ラベル無し地図クイズ／国別判定オフライン化版</title>
+<title>地図ゲッサー v0.59 - ラベル無し地図クイズ／国別判定オフライン化版</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -421,7 +421,7 @@
   <div id="header">
     <div id="titleBlock">
       <span class="eyebrow">Blank Atlas &mdash; No Labels</span>
-      <h1>地図ゲッサー <span id="versionTag">0.58</span></h1>
+      <h1>地図ゲッサー <span id="versionTag">0.59</span></h1>
     </div>
     <div id="statsBar" class="hidden">
       <div class="stat" id="modeStat"><span class="val" id="modeVal">-</span><span class="lbl">モード</span></div>
@@ -466,7 +466,7 @@
 
   <div id="startPanel">
     <div class="card">
-      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.58</span></h2>
+      <h2>地図ゲッサー <span id="versionTagCard" style="font-size:14px; vertical-align:middle;">v0.59</span></h2>
       <p>地名も施設名も消えた、まっさらな地図が出るヨ。海岸線・道路・川の形だけを手がかりに、そこがドコの国どこの場所かをアテるゲームダカラ。表示された範囲の中だけ自由に動かして拡大縮小してヨシ！</p>
       <div id="sharedQuizBanner" class="hidden" style="margin-bottom:12px; padding:10px; border:1px solid rgba(168,130,63,0.5); border-radius:8px;">
         <p id="sharedQuizBannerText" style="margin:0 0 8px 0; font-size:14px;"></p>
@@ -922,6 +922,35 @@
     return hardCityDataPromise;
   }
 
+  // 都市モード用：国ゴトニグループ化シテ、都市数の平方根デ重み付けスルヨ
+  // （単純ニ件数デ比べルト大国ばっかリ出ちゃうカラ、√デ差ヲ縮メテ小サイ国モ出やすクするタメダヨ）
+  function groupCitiesByCountry(pool){
+    const groups = new Map();
+    for(const c of pool){
+      const code = c[3];
+      if(!groups.has(code)) groups.set(code, []);
+      groups.get(code).push(c);
+    }
+    const countries = [...groups.keys()];
+    const weights = countries.map(code => Math.sqrt(groups.get(code).length));
+    const totalWeight = weights.reduce((a,b)=>a+b, 0);
+    return {groups, countries, weights, totalWeight};
+  }
+  function pickWeightedCity(grouped){
+    let r = Math.random()*grouped.totalWeight;
+    for(let i=0;i<grouped.countries.length;i++){
+      r -= grouped.weights[i];
+      if(r <= 0){
+        const arr = grouped.groups.get(grouped.countries[i]);
+        return arr[Math.floor(Math.random()*arr.length)];
+      }
+    }
+    // 万一浮動小数点誤差デ最後マデ引ケナカッタラ、最後の国カラ選ブヨ（保険ダカラ）
+    const last = grouped.countries[grouped.countries.length-1];
+    const arr = grouped.groups.get(last);
+    return arr[Math.floor(Math.random()*arr.length)];
+  }
+
   // 揺らした後の地点カラ、一番近イ都市（手持ちのデータ全部候補）ヲ探して名前を返すヨ。
   // 「サッポロと出たのに実際は100km離れてて全然サッポロじゃない」問題ヲ直スタメダヨ
   function findNearestNamedCity(lat, lon, mode){
@@ -967,9 +996,10 @@
     }
     // 同ジ都市、二回出ナイヨウ、モウ使ッタ都市ハ避ケルヨ（プール全部使イ切ッタラ、諦メテ重複許ストコロダケ例外ダヨ）。
     // 世界モードダケ、同ジ国、連続シテ出ナイヨウモ避ケルヨ（日本モード・地域モードハ対象外ダカラ）
+    const grouped = groupCitiesByCountry(pool);
     let c, key, tries = 0;
     do{
-      c = pool[Math.floor(Math.random()*pool.length)];
+      c = pickWeightedCity(grouped);
       key = c[0] + ',' + c[1];
       tries++;
     } while(
